@@ -33,6 +33,9 @@ jobs:
       IC_DATABASE_URL: postgres://icomment:icomment@127.0.0.1:5432/icomment
       IC_REDIS_URL: redis://127.0.0.1:6379
       IC_SESSION_SECRET: ci-secret
+      # 冒烟测试自己建 schema，缺这两个变量就整体跳过
+      IC_TEST_DATABASE_URL: postgres://icomment:icomment@127.0.0.1:5432/icomment
+      IC_TEST_REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -42,6 +45,9 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # 冒烟用例缺依赖会静默跳过，这里断言它们真的跑过
+      - run: cargo test -p icomment-core --test smoke -- --nocapture 2>&1 | tee smoke.log
+      - run: "! grep -q '0 passed' smoke.log"
 
   web:
     runs-on: ubuntu-latest

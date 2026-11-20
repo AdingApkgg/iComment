@@ -33,9 +33,13 @@ fn random_key() -> String {
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+pub const CHALLENGE_MODES: [&str; 3] = ["always", "suspicious", "off"];
+
 pub struct CreateSite {
     pub origin: String,
     pub name: Option<String>,
+    pub require_approval: Option<bool>,
+    pub challenge_mode: Option<String>,
 }
 
 /// 建站。origin 归一化后冲突返回 400。
@@ -47,9 +51,21 @@ pub async fn create(state: &AppState, owner: Uuid, input: CreateSite) -> Result<
         .map(|n| n.trim().to_owned())
         .filter(|n| !n.is_empty());
 
+    let challenge_mode = match input.challenge_mode.as_deref() {
+        Some(mode) if CHALLENGE_MODES.contains(&mode) => mode.to_owned(),
+        Some(mode) => {
+            return Err(Problem::field(
+                "challenge_mode",
+                format!("unknown mode {mode}"),
+            ));
+        }
+        None => "always".to_owned(),
+    };
+
     let site: Option<Site> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "insert into site (id, owner_id, origin, name, site_key, site_secret) \
-         values ($1, $2, $3, $4, $5, $6) \
+        "insert into site \
+           (id, owner_id, origin, name, site_key, site_secret, require_approval, challenge_mode) \
+         values ($1, $2, $3, $4, $5, $6, coalesce($7, true), $8) \
          on conflict (lower(origin)) where deleted_at is null do nothing \
          returning {COLS}"
     )))
@@ -59,6 +75,8 @@ pub async fn create(state: &AppState, owner: Uuid, input: CreateSite) -> Result<
     .bind(&name)
     .bind(random_key())
     .bind(random_key())
+    .bind(input.require_approval)
+    .bind(&challenge_mode)
     .fetch_optional(state.db())
     .await?;
 

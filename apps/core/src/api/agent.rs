@@ -76,6 +76,11 @@ pub struct CreateSiteInput {
     pub origin: String,
     #[serde(default)]
     pub name: Option<String>,
+    /// 建站时顺手定下审核/验证策略，省一次 PATCH。
+    #[serde(default)]
+    pub require_approval: Option<bool>,
+    #[serde(default)]
+    pub challenge_mode: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,6 +110,8 @@ pub async fn create_site(
         site::CreateSite {
             origin: input.origin,
             name: input.name,
+            require_approval: input.require_approval,
+            challenge_mode: input.challenge_mode,
         },
     )
     .await?;

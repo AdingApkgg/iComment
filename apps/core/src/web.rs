@@ -191,6 +191,8 @@ pub async fn create_site(
         site::CreateSite {
             origin: form.origin,
             name: form.name,
+            require_approval: None,
+            challenge_mode: None,
         },
     )
     .await?;

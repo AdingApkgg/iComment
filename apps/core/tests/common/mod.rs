@@ -1,0 +1,237 @@
+//! 冒烟用的最小测试台：真连 PG + Redis，每例一个独立 schema。
+//!
+//! 依赖由 `IC_TEST_DATABASE_URL` / `IC_TEST_REDIS_URL` 提供，缺一个就整体跳过。
+
+use std::cell::Cell;
+
+use axum::{
+    Router,
+    body::Body,
+    http::{Request, StatusCode, header},
+    response::Response,
+};
+use icomment_core::{
+    AppState, auth,
+    config::{self, Settings},
+    domain::account,
+    router,
+};
+use sqlx::{PgPool, postgres::PgPoolOptions};
+use tower::ServiceExt;
+
+pub const V1: &str = "/api/v1";
+
+pub struct Harness {
+    pub state: AppState,
+    app: Router,
+    admin: PgPool,
+    schema: String,
+    /// 伪来源 IP，让每个用例落在自己的限流桶里。
+    ip: Cell<String>,
+}
+
+/// 便捷断言用：(状态码, JSON)。
+pub type Json = (StatusCode, serde_json::Value);
+
+fn env(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.is_empty())
+}
+
+pub async fn to_json(resp: Response) -> Json {
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .expect("body too large");
+    (status, serde_json::from_slice(&bytes).unwrap_or_default())
+}
+
+impl Harness {
+    /// 建独立 schema、跑迁移、装 app；缺依赖返回 None，用例据此跳过。
+    pub async fn start() -> Option<Self> {
+        let base = env("IC_TEST_DATABASE_URL")?;
+        let redis_url = env("IC_TEST_REDIS_URL")?;
+        let schema = format!("t{}", uuid::Uuid::now_v7().simple());
+
+        let admin = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&base)
+            .await
+            .ok()?;
+        sqlx::query(sqlx::AssertSqlSafe(format!("create schema {schema}")))
+            .execute(&admin)
+            .await
+            .ok()?;
+
+        // 连接一建立就落在这个 schema 里，迁移与运行期才不会分歧
+        let scoped = format!("{base}?options=-c%20search_path%3D{schema}");
+        let pool = PgPoolOptions::new()
+            .max_connections(4)
+            .connect(&scoped)
+            .await
+            .ok()?;
+        sqlx::migrate!("./migrations").run(&pool).await.ok()?;
+
+        let cfg = config::Config {
+            bind: "127.0.0.1:0".to_owned(),
+            database_url: scoped,
+            redis_url: redis_url.clone(),
+            public_base_url: "http://127.0.0.1:8080".to_owned(),
+            session_secret: "test".to_owned(),
+            turnstile_secret: None,
+            turnstile_site_key: None,
+            widget_cdn: "http://127.0.0.1:8080/widget/v1".to_owned(),
+            db_pool_max: 4,
+            verify_private: true,
+            cors_origins: Vec::new(),
+        };
+
+        let redis = redis::Client::open(redis_url)
+            .ok()?
+            .get_connection_manager()
+            .await
+            .ok()?;
+        let state = AppState::new(pool, redis, Settings(cfg), reqwest::Client::new());
+        let ip = Cell::new(format!("10.0.0.{}", 1 + (std::process::id() % 250)));
+
+        Some(Self {
+            app: router::build(state.clone()),
+            state,
+            admin,
+            schema,
+            ip,
+        })
+    }
+
+    /// 换成没人用过的伪 IP：进程号 + 纳秒时钟 + 序号，跨轮次也不撞限流桶。
+    pub fn unique_ip(&mut self) {
+        static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .subsec_nanos();
+        let n = std::process::id()
+            .wrapping_mul(7)
+            .wrapping_add(nanos)
+            .wrapping_add(seq * 1024);
+        self.ip
+            .set(format!("10.{}.{}.{}", n >> 8 & 0xff, n & 0xff, 1 + n % 200));
+    }
+
+    pub async fn finish(self) {
+        let sql = sqlx::AssertSqlSafe(format!("drop schema if exists {} cascade", self.schema));
+        let _ = sqlx::query(sql).execute(&self.admin).await;
+    }
+
+    pub async fn raw(
+        &self,
+        method: &str,
+        uri: &str,
+        headers: &[(&str, &str)],
+        body: Option<serde_json::Value>,
+    ) -> Response {
+        // Cell::take 会留下空串，取出来再放回去
+        let ip = self.ip.take();
+        self.ip.set(ip.clone());
+        let mut builder = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("x-forwarded-for", ip);
+        if let Some(json) = &body {
+            builder = builder.header(header::CONTENT_LENGTH, json.to_string().len());
+        }
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let request = builder
+            .body(body.map_or_else(Body::empty, |json| Body::from(json.to_string())))
+            .expect("valid request");
+        self.app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("send failed")
+    }
+
+    /// 带 `x-site-key` 的匿名公开面调用。
+    pub async fn anon(&self, uri: &str, key: &str, body: serde_json::Value) -> Json {
+        let resp = self
+            .raw("POST", uri, &[("x-site-key", key)], Some(body))
+            .await;
+        to_json(resp).await
+    }
+
+    pub async fn get_anon(&self, uri: &str, key: &str) -> Json {
+        let resp = self.raw("GET", uri, &[("x-site-key", key)], None).await;
+        to_json(resp).await
+    }
+
+    pub async fn get(&self, uri: &str, bearer: &str) -> Json {
+        let resp = self
+            .raw(
+                "GET",
+                uri,
+                &[("authorization", &format!("Bearer {bearer}"))],
+                None,
+            )
+            .await;
+        to_json(resp).await
+    }
+
+    pub async fn post_auth(&self, uri: &str, bearer: &str, body: serde_json::Value) -> Json {
+        let auth = format!("Bearer {bearer}");
+        let resp = self
+            .raw("POST", uri, &[("authorization", &auth)], Some(body))
+            .await;
+        to_json(resp).await
+    }
+
+    pub async fn patch_auth(&self, uri: &str, bearer: &str, body: serde_json::Value) -> Json {
+        let auth = format!("Bearer {bearer}");
+        let resp = self
+            .raw("PATCH", uri, &[("authorization", &auth)], Some(body))
+            .await;
+        to_json(resp).await
+    }
+
+    /// 走完设备授权（直接调 domain，跳过网页表单），返回账号级 token。
+    pub async fn login(&self, email: &str) -> String {
+        let account = account::ensure(&self.state, email).await.expect("account");
+        let flow = auth::start_device_flow(self.state.db())
+            .await
+            .expect("device flow");
+        auth::approve_device_code(self.state.db(), &flow.user_code, account.id)
+            .await
+            .expect("approve");
+        let (status, issued) = self
+            .post_auth(
+                &format!("{V1}/agent/token"),
+                "",
+                serde_json::json!({ "device_code": flow.device_code }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{issued}");
+        issued["token"].as_str().expect("token").to_owned()
+    }
+
+    /// 建站并按需关掉审核与验证，返回 (site_key, site_id)。
+    pub async fn create_site(&self, token: &str, origin: &str) -> (String, uuid::Uuid) {
+        let (status, body) = self
+            .post_auth(
+                &format!("{V1}/agent/sites"),
+                token,
+                serde_json::json!({
+                    "origin": origin,
+                    "require_approval": false,
+                    "challenge_mode": "off",
+                }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        (
+            body["site_key"].as_str().expect("site_key").to_owned(),
+            body["id"].as_str().expect("id").parse().expect("uuid"),
+        )
+    }
+}

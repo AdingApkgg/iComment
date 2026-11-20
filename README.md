@@ -84,10 +84,24 @@ Caddy 自动签 HTTPS 并反代到核心；PG / Redis 只在 compose 内网可�
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 bunx biome check .
-bunx tsc -p packages/sdk/tsconfig.json --noEmit
+bunx tsc -b packages/mcp          # sdk 走 project references，一起编译
 ```
 
 `apps/core/assets/` 是构建产物，由 `scripts/bundle-widget.sh` 生成，不进 biome。
+
+### 冒烟测试
+
+`apps/core/tests/smoke.rs` 跑真实链路：设备授权 → 建站 → 发评论 → 审核 → 撤销。
+它连真 PG 与 Redis，**每个用例自建 schema 并在结束时删掉**，靠这两个变量定位：
+
+```bash
+IC_TEST_DATABASE_URL=postgres://icomment:icomment@127.0.0.1:25493/icomment \
+IC_TEST_REDIS_URL=redis://127.0.0.1:26493 \
+cargo test -p icomment-core --test smoke
+```
+
+变量缺失时用例静默跳过，所以 CI 会额外断言「没有 0 passed」。用例之间用伪造的
+`X-Forwarded-For` 分桶，互相不抢限流名额。
 
 ## 文档
 

@@ -79,9 +79,16 @@ impl FromRequestParts<AppState> for ClientIp {
             .extensions
             .get::<ConnectInfo<SocketAddr>>()
             .map(|c| c.0);
+        // 测试里没有监听 socket，用 XFF 首跳冒充来源，便于按用例隔离限流
+        let forwarded = parts
+            .headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(',').next())
+            .and_then(|v| v.trim().parse::<IpAddr>().ok());
         let ip = match connect {
-            Some(addr) => client_ip(&addr, &parts.headers),
-            None => None,
+            Some(addr) => client_ip(&addr, &parts.headers).or(forwarded),
+            None => forwarded,
         };
         Ok(Self(ip))
     }
