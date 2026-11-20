@@ -527,9 +527,12 @@ async fn daily_soft_cap_forces_review_but_keeps_accepting() {
 
     // 日计数置到软顶之上，模拟当天已写满
     let mut conn = h.state.redis().clone();
-    let _: i64 = redis::cmd("SET")
+    // SET 回的是 "OK"，别按整数收
+    let _: String = redis::cmd("SET")
         .arg(format!("ic:daily:{site_id}"))
         .arg(antispam::DAILY_SOFT_CAP + 1)
+        .arg("EX")
+        .arg(86_400)
         .query_async(&mut conn)
         .await
         .expect("seed counter");
