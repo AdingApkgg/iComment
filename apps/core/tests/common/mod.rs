@@ -96,7 +96,7 @@ impl Harness {
             turnstile_site_key: None,
             widget_cdn: "http://127.0.0.1:8080/widget/v1".to_owned(),
             db_pool_max: 4,
-            verify_private: true,
+            verify_private: false,
             cors_origins: Vec::new(),
         };
 

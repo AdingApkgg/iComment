@@ -510,7 +510,7 @@ async fn verify_rejects_a_relative_url() {
             serde_json::json!({ "url": "ftp://example.com/x" }),
         )
         .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "validation_failed");
     assert!(body["fields"]["url"].is_string());
     h.finish().await;
