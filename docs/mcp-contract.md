@@ -53,15 +53,15 @@ agent 是主用户，所以开户、建站、验收都由它驱动，人只在�
 ```
 POST /api/v1/agent/sites/{site_id}/verify { url }
   1. 服务端 GET url（UA: icomment-verify/1，8s，最多 3 跳）
-  2. 在 HTML 里查四要素：script、ic-comment 元素、site_key、path
+  2. 在 HTML 里查五项：script 存在、src 指向本实例的 icomment.js、带 defer、ic-comment 元素在 body 内、site_key 对得上、path 是页面路径（path 缺省可从 `location.pathname` 取）
   3. 逐项报缺并给出可直接照做的 hint
 ```
 
 返回必须是可行动的三选一（`status` 由 `#[serde(tag = "status")]` 扁平输出）：
 
 - `ok`：`{ "status": "ok", "found": ["script","element","site_key","path"], "http_status": 200 }`
-- `partial`：`{ "status": "partial", "missing": ["site_key"], "hint": "元素上补 site-key=\"…\"" }` → agent 能自己补
-- `failed`：`{ "status": "failed", "reason": "timeout" | "unreachable" | "page_error" | "too_many_redirects", "hint": "…" }`
+- `partial`：`{ "status": "partial", "missing": ["site_key"], "hint": "元素上补 data-site-key=\"…\"，改完是 <ic-comment data-site-key=\"…\" path=\"…\"></ic-comment>" }` → agent 能自己补
+- `failed`：`{ "status": "failed", "reason": "timeout" | "unreachable" | "page_error" | "too_many_redirects" | "private_host", "hint": "…" }` → hint 说清是部署没上去还是地址给了内网
 
 控制台站点页也有同一个动作（`/dashboard/sites/{id}?verify={url}`），人不用开 MCP 就能自查。本地调试给核心加 `IC_VERIFY_PRIVATE=1` 才允许抓回环地址。
 

@@ -29,7 +29,7 @@ pub async fn llms(state: State<AppState>) -> Response {
 1. `POST {base}/api/v1/agent/device` 拿设备码，把 `verification_uri_complete` 交给站点主人在浏览器里确认
 2. 轮询 `POST {base}/api/v1/agent/token` 直到拿到以 `tsa_` 开头的 token
 3. `POST {base}/api/v1/agent/sites` 建站，响应里的 `embed_snippet` 原样贴进 HTML
-4. `POST {base}/api/v1/verify` 校验装好了没
+4. `POST {base}/api/v1/agent/sites/<site_id>/verify` 校验装好了没
 
 账号级 token 可管所有站；每个站另有站点级 token，只够读写自己。
 "#
@@ -87,7 +87,9 @@ curl -s {base}/api/v1/verify -X POST \
   -d '{{"site_id":"<站点 id>","url":"https://example.com/posts/hello"}}'
 ```
 
-`verdict` 为 `ok` 才算装好；`partial` 会列出缺哪一项。
+`verdict` 为 `ok` 才算装好；`partial` 会列出缺哪一项并给出改法。
+
+本地或内网地址（`127.0.0.1`、`*.local`、私网段）服务端默认抓不到，抓回环地址时给核心加 `IC_VERIFY_PRIVATE=1`。
 
 ## 不用 JS 的读者
 
