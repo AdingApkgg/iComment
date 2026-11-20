@@ -465,3 +465,53 @@ async fn embed_snippet_does_not_double_the_file_name() {
     }
     h.finish().await;
 }
+
+#[tokio::test]
+async fn verify_reports_a_private_host_with_an_actionable_hint() {
+    let Some(h) = common::Harness::start().await else {
+        return;
+    };
+    let token = h.login("verify-local@example.com").await;
+    let (_key, site_id) = h
+        .create_site(&token, "https://verify-local.example.com")
+        .await;
+    let (status, body) = h
+        .post_auth(
+            &format!("/api/v1/agent/sites/{site_id}/verify"),
+            &token,
+            serde_json::json!({ "url": "http://127.0.0.1:8090/post" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "failed");
+    assert_eq!(body["reason"], "private_host");
+    assert!(
+        body["hint"]
+            .as_str()
+            .is_some_and(|h| h.contains("IC_VERIFY_PRIVATE"))
+    );
+    assert!(body["http_status"].is_null());
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn verify_rejects_a_relative_url() {
+    let Some(h) = common::Harness::start().await else {
+        return;
+    };
+    let token = h.login("verify-url@example.com").await;
+    let (_key, site_id) = h
+        .create_site(&token, "https://verify-url.example.com")
+        .await;
+    let (status, body) = h
+        .post_auth(
+            &format!("/api/v1/agent/sites/{site_id}/verify"),
+            &token,
+            serde_json::json!({ "url": "ftp://example.com/x" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["code"], "validation_failed");
+    assert!(body["fields"]["url"].is_string());
+    h.finish().await;
+}
