@@ -495,9 +495,10 @@ pub fn render(title: &str, body: &str, authed: bool) -> String {
 /// 验收结果渲染：ok 绿、partial 列出缺项与 hint、failed 只说原因。
 fn verdict_html(result: &api::verify::VerifyResult) -> String {
     match &result.verdict {
-        api::verify::Verdict::Ok { .. } => {
-            "<p class=\"ok\">四要素齐全，widget 已挂上。</p>".to_owned()
-        }
+        api::verify::Verdict::Ok { found } => format!(
+            r#"<p class="ok">四项都齐（{found}），widget 已挂上。</p>"#,
+            found = esc(&found.join("、")),
+        ),
         api::verify::Verdict::Partial { missing, hint } => format!(
             r#"<p class="warn">抓到页面（HTTP {status}），但缺：{missing}</p><p class="muted">{hint}</p>"#,
             status = result.http_status.unwrap_or(0),
