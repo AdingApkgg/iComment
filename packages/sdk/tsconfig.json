@@ -1,11 +1,17 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023", "DOM"],
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
     "types": [],
     "rootDir": "src",
     "outDir": "dist",
-    "noEmitOnError": true
+    "noEmitOnError": true,
+    "composite": true
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
