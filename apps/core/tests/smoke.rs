@@ -512,6 +512,6 @@ async fn verify_rejects_a_relative_url() {
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "validation_failed");
-    assert!(body["fields"]["url"].is_string());
+    assert_eq!(body["fields"][0]["field"], "url");
     h.finish().await;
 }
