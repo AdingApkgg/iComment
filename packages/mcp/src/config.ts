@@ -15,6 +15,11 @@ export function apiBase(): string {
   return process.env.IC_API_BASE ?? DEFAULT_BASE;
 }
 
+/** 服务根（去掉 `/api/v1`），embed 链接和 /llms.txt 都挂在上面。 */
+export function serviceOrigin(): string {
+  return apiBase().replace(/\/api\/v1\/?$/, "");
+}
+
 export function loadToken(): string | undefined {
   if (process.env.IC_TOKEN) return process.env.IC_TOKEN;
   try {

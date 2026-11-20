@@ -78,6 +78,10 @@ Caddy 自动签 HTTPS 并反代到核心；PG / Redis 只在 compose 内网可�
 
 错误统一 `application/problem+json`，带 `code`、`fields`，必要时 `next` 指引下一步；限流回 `Retry-After`。
 
+重试安全：`POST /api/v1/comments` 收 `Idempotency-Key` 头（或 body 里的 `idempotency_key`），重放返回同一行且 `created=false`。
+
+无 JS 兜底：`/embed/<site_key>/<path>` 是服务端渲染的评论区，原生表单就能发；widget 拿不到元信息时也直接给这个链接。agent 可以先读 `/llms.txt` 与 `/install.md` 自己装。
+
 ## 开发约定
 
 ```bash

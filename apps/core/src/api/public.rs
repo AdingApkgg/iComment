@@ -173,9 +173,33 @@ pub async fn create(
     SiteOrigin(origin): SiteOrigin,
     ClientIp(ip): ClientIp,
     headers: HeaderMap,
-    Json(input): Json<CreateComment>,
+    Json(mut input): Json<CreateComment>,
 ) -> Result<Json<Created>> {
+    // 头优先：调用方重试时换不出新 body，但能原样再发一次同一把钥匙
+    if input.idempotency_key.is_none()
+        && let Some(key) = headers
+            .get("idempotency-key")
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    {
+        input.idempotency_key = Some(key.to_owned());
+    }
     let site = site::resolve(&state, &origin).await?;
+    Ok(Json(
+        submit(&state, &site, ip, &headers, input, false).await?,
+    ))
+}
+
+/// 写入一条匿名评论。JSON 面与无 JS 的 embed 表单共用，后者跳过人机验证。
+pub async fn submit(
+    state: &AppState,
+    site: &site::Site,
+    ip: Option<std::net::IpAddr>,
+    headers: &HeaderMap,
+    input: CreateComment,
+    skip_challenge: bool,
+) -> Result<Created> {
     if input.idempotency_key.as_ref().is_some_and(|k| k.len() > 64) {
         return Err(Problem::field("idempotency_key", "over 64 chars"));
     }
@@ -185,14 +209,14 @@ pub async fn create(
         .unwrap_or_else(|| "none".to_owned());
 
     antispam::hit(
-        &state,
+        state,
         &format!("ic:rl:c:{}", ip_key),
         antispam::COMMENT_BURST,
         60,
     )
     .await?;
     antispam::hit(
-        &state,
+        state,
         &format!("ic:rl:h:{}:{}", site.id, ip_key),
         antispam::COMMENT_HOURLY,
         3600,
@@ -202,14 +226,13 @@ pub async fn create(
     let body_md = comment::validate_body(&input.body_md)?;
     let (spam, needs_review) = antispam::sniff(&body_md, input.author_name.as_deref());
 
-    if antispam::challenge_needed(&site.challenge_mode, spam) {
-        antispam::verify_challenge(&state, input.challenge_token.as_deref(), ip).await?;
+    if !skip_challenge && antispam::challenge_needed(&site.challenge_mode, spam) {
+        antispam::verify_challenge(state, input.challenge_token.as_deref(), ip).await?;
     }
 
-    let thread =
-        thread::get_or_create(&state, site.id, &input.path, input.title.as_deref()).await?;
+    let thread = thread::get_or_create(state, site.id, &input.path, input.title.as_deref()).await?;
     let (parent_id, _depth) =
-        comment::resolve_parent(&state, site.id, thread.id, input.parent_id).await?;
+        comment::resolve_parent(state, site.id, thread.id, input.parent_id).await?;
 
     let rendered = markdown::render(&body_md);
     let status: &'static str = if spam {
@@ -221,7 +244,7 @@ pub async fn create(
     };
 
     let (comment, created) = comment::insert(
-        &state,
+        state,
         comment::NewComment {
             site_id: site.id,
             thread_id: thread.id,
@@ -233,7 +256,7 @@ pub async fn create(
             author_name: input.author_name.clone(),
             author_avatar: input.author_avatar.clone(),
             author_email: input.author_email.clone(),
-            ip_hash: antispam::ip_hash(&state, ip).await,
+            ip_hash: antispam::ip_hash(state, ip).await,
             ua_hash: headers
                 .get(axum::http::header::USER_AGENT)
                 .and_then(|v| v.to_str().ok())
@@ -251,16 +274,16 @@ pub async fn create(
     .await?;
 
     if created {
-        thread::bump(&state, thread.id, 1, comment.created_at).await?;
+        thread::bump(state, thread.id, 1, comment.created_at).await?;
     }
 
-    Ok(Json(Created {
+    Ok(Created {
         id: comment.id,
         status,
         body_html: rendered.html,
         created_at: comment.created_at,
         created,
-    }))
+    })
 }
 
 /// 站点信息（widget footer 用）。

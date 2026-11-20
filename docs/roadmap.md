@@ -10,6 +10,8 @@
 PG + Redis、托管、device auth、llms.txt + install.md 上线、widget 发 CDN v1、独立 embed 页。
 验收：三个不同框架（Astro / Next / 纯 HTML）各由 agent 装上并通过 `verify_install`。
 
+已完成：llms.txt + install.md（`apps/core/src/discover.rs`）、embed 页、widget 失败降级链接。
+
 **S2 用得住（3–4 周）**
 审批台、审计表回看、Akismet、贴图与反应（从 mikiacg 搬）、i18n。
 验收：一周内真实站点的 spam 全部落在 pending，零穿透到可见。
@@ -21,8 +23,8 @@ PG + Redis、托管、device auth、llms.txt + install.md 上线、widget 发 CD
 
 - S1 前：`verify_install` 在三个框架的失败态都能给出可行动 `hint`（不是只说失败）。
 - S2 前：widget gzip ≤ 15KB，Lighthouse a11y ≥ 95。
-- 上线前：`/embed` 页在 JS 禁用下可读可写。
-- 上线前：全部写接口有幂等键，重放测试通过。
+- 上线前：`/embed` 页在 JS 禁用下可读可写。✅ `apps/core/src/embed.rs`，冒烟用例 `embed_page_works_without_javascript` 覆盖读、写、错误回显。
+- 上线前：全部写接口有幂等键，重放测试通过。✅ `Idempotency-Key` 头与 `idempotency_key` 字段等价，`idempotency_header_prevents_double_post` 验证重放返回同一行且 `created=false`。
 
 ## 不做（本季）
 

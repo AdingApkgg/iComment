@@ -223,6 +223,33 @@ pub async fn page(
     })
 }
 
+/// 可见（含待审）评论总数。
+pub async fn count(state: &AppState, thread_id: Uuid) -> Result<i64> {
+    let n: i64 = sqlx::query_scalar(
+        "select count(*) from comment where thread_id = $1 and status = any($2)",
+    )
+    .bind(thread_id)
+    .bind(&["visible", "pending"][..])
+    .fetch_one(state.db())
+    .await?;
+    Ok(n)
+}
+
+/// 直连子回复（深度 1 跳），给深链单条视图用。
+pub async fn children(state: &AppState, thread_id: Uuid, parent_id: Uuid) -> Result<Vec<Comment>> {
+    let rows: Vec<Comment> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "select {COLS} from comment \
+         where thread_id = $1 and parent_id = $2 and status = any($3) \
+         order by created_at asc limit 100"
+    )))
+    .bind(thread_id)
+    .bind(parent_id)
+    .bind(&["visible", "pending"][..])
+    .fetch_all(state.db())
+    .await?;
+    Ok(rows)
+}
+
 /// 状态迁移 + 事件。返回是否真的改了。
 pub async fn transition(
     state: &AppState,
@@ -296,7 +323,7 @@ pub async fn transition(
 pub fn validate_body(raw: &str) -> Result<String> {
     let body = raw.trim();
     if body.is_empty() {
-        return Err(Problem::field("body_md", "empty"));
+        return Err(Problem::field("body_md", "内容不能为空"));
     }
     if body.len() > MAX_BODY_BYTES {
         return Err(Problem::field("body_md", "over 8 KiB"));

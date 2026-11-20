@@ -264,6 +264,8 @@ export class CommentWidget extends LitElement {
   private api: Api | null = null;
   private _view: View = blank();
   private turnstileToken: string | null = null;
+  /** 一次草稿一把钥匙：重试同一段内容不会发重。 */
+  private draftKey: string | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -355,6 +357,7 @@ export class CommentWidget extends LitElement {
     }
 
     this._view = { ...this._view, sending: true, error: null, notice: null };
+    this.draftKey ??= crypto.randomUUID();
     try {
       const result = await this.api.post(this.url(), {
         body_md: body,
@@ -362,6 +365,7 @@ export class CommentWidget extends LitElement {
         author_name: this._view.name.trim() || null,
         author_email: this._view.email.trim() || null,
         challenge_token: this.turnstileToken,
+        idempotency_key: this.draftKey,
       });
       this._view = {
         ...this._view,
@@ -371,6 +375,7 @@ export class CommentWidget extends LitElement {
         notice: result.message ?? (result.created ? "已发布" : "已收到，审核后显示"),
       };
       this.turnstileToken = null;
+      this.draftKey = null;
       if (result.created) await this.load();
     } catch (err) {
       const message =
@@ -421,11 +426,29 @@ export class CommentWidget extends LitElement {
     </li>`;
   }
 
+  /** 元信息都没拿到时，至少把访客引到服务端渲染的 embed 页去读和写。 */
+  private failed(reason: string): TemplateResult {
+    const page = this.url().replace(/^[^:]+:\/\/[^/]+/, "");
+    const href = `${this.deriveOrigin()}/embed/${this.siteKey}${page}`;
+    return html`
+      <p class="error">${reason}</p>
+      <p class="muted"><a href=${href} target="_blank" rel="noopener">在新页面读评论</a></p>
+    `;
+  }
+
+  private deriveOrigin(): string {
+    try {
+      return new URL(this.apiBase || this.deriveBase()).origin;
+    } catch {
+      return location.origin;
+    }
+  }
+
   override render(): TemplateResult | TemplateResult[] {
     const v = this._view;
     const meta = v.meta;
     if (!meta && v.loading) return html`<p class="muted">加载评论…</p>`;
-    if (!meta && v.error) return html`<p class="error">${v.error}</p>`;
+    if (!meta && v.error) return this.failed(v.error);
 
     const tree = byParent(v.comments);
     const roots = tree.get(null) ?? [];

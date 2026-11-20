@@ -45,6 +45,15 @@ pub async fn to_json(resp: Response) -> Json {
     (status, serde_json::from_slice(&bytes).unwrap_or_default())
 }
 
+/// 取文本正文（HTML / markdown 页）。
+pub async fn text(resp: Response) -> (StatusCode, String) {
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .expect("body too large");
+    (status, String::from_utf8_lossy(&bytes).into_owned())
+}
+
 impl Harness {
     /// 建独立 schema、跑迁移、装 app；缺依赖返回 None，用例据此跳过。
     pub async fn start() -> Option<Self> {
@@ -94,7 +103,7 @@ impl Harness {
         let ip = Cell::new(format!("10.0.0.{}", 1 + (std::process::id() % 250)));
 
         Some(Self {
-            app: router::build(state.clone()),
+            app: router::build(state.clone()).merge(icomment_core::pages::build(state.clone())),
             state,
             admin,
             schema,
@@ -193,6 +202,24 @@ impl Harness {
             .raw("PATCH", uri, &[("authorization", &auth)], Some(body))
             .await;
         to_json(resp).await
+    }
+
+    /// 原生表单提交（`application/x-www-form-urlencoded`），用来验无 JS 路径。
+    pub async fn raw_form(&self, method: &str, uri: &str, form: &str) -> Response {
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .header("x-forwarded-for", self.ip.take().clone())
+            .header(header::CONTENT_LENGTH, form.len())
+            .body(Body::from(form.to_owned()))
+            .expect("valid request");
+        self.ip.set(self.ip.take());
+        self.app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("send failed")
     }
 
     /// 走完设备授权（直接调 domain，跳过网页表单），返回账号级 token。

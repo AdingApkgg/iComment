@@ -252,3 +252,118 @@ async fn site_key_beats_forged_origin() {
 
     h.finish().await;
 }
+
+#[tokio::test]
+async fn embed_page_works_without_javascript() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+
+    let token = h.login("embed@example.com").await;
+    let (key, _) = h.create_site(&token, "embed.example.com").await;
+
+    // 表单所在页可读
+    let (status, html) = crate::common::text(
+        h.raw("GET", &format!("/embed/{key}/posts/hello"), &[], None)
+            .await,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<form method=\"post\""), "{html}");
+    assert!(html.contains("不需要 JavaScript"));
+
+    // 原生表单提交：urlencoded，无 Turnstile 令牌
+    let form = "path=%2Fposts%2Fhello&body_md=**无JS**&author_name=手敲";
+    let resp = h
+        .raw_form("POST", &format!("/embed/{key}/posts/hello"), form)
+        .await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::SEE_OTHER,
+        "form post should redirect"
+    );
+
+    let (status, html) = crate::common::text(
+        h.raw("GET", &format!("/embed/{key}/posts/hello"), &[], None)
+            .await,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<strong>无JS</strong>"), "{html}");
+    assert!(html.contains("手敲"));
+
+    // 空正文回跳到带原因的地址
+    let resp = h
+        .raw_form(
+            "POST",
+            &format!("/embed/{key}/posts/hello"),
+            "path=/posts/hello&body_md=",
+        )
+        .await;
+    let location = resp
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    assert!(location.contains("error="), "{location}");
+
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn idempotency_header_prevents_double_post() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+
+    let token = h.login("idem@example.com").await;
+    let (key, _) = h.create_site(&token, "idem.example.com").await;
+    let body = serde_json::json!({ "path": "/p", "body_md": "只该出现一次" });
+
+    let first = h
+        .raw(
+            "POST",
+            &format!("{V1}/comments"),
+            &[("x-site-key", key.as_str()), ("idempotency-key", "k-1")],
+            Some(body.clone()),
+        )
+        .await;
+    let (status, created) = crate::common::to_json(first).await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    assert_eq!(created["created"], true);
+
+    let again = h
+        .raw(
+            "POST",
+            &format!("{V1}/comments"),
+            &[("x-site-key", key.as_str()), ("idempotency-key", "k-1")],
+            Some(body),
+        )
+        .await;
+    let (status, duplicate) = crate::common::to_json(again).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(duplicate["created"], false);
+    assert_eq!(duplicate["id"], created["id"]);
+
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn discovery_documents_are_served() {
+    let Some(h) = Harness::start().await else {
+        return;
+    };
+
+    let (status, body) = crate::common::text(h.raw("GET", "/llms.txt", &[], None).await).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("/api/v1/agent/device"), "{body}");
+
+    let (status, body) = crate::common::text(h.raw("GET", "/install.md", &[], None).await).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("data-site-key"));
+
+    h.finish().await;
+}
