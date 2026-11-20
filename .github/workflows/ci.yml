@@ -47,7 +47,8 @@ jobs:
       - run: cargo test --workspace
       # 冒烟用例缺依赖会静默跳过，这里断言它们真的跑过
       - run: cargo test -p icomment-core --test smoke -- --nocapture 2>&1 | tee smoke.log
-      - run: "! grep -q '0 passed' smoke.log"
+      # 注意 "10 passed" 里也含 "0 passed"，必须连 test result 一起匹配
+      - run: "! grep -q 'test result: ok. 0 passed' smoke.log"
 
   web:
     runs-on: ubuntu-latest
