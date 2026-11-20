@@ -145,6 +145,22 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "sign_identity",
+    {
+      title: "签透传身份",
+      description:
+        "给宿主站已登录用户签一段 5 分钟有效的 X-IC-Identity，前端带给评论接口即可免人机验证、免待审。秘钥不出服务端。",
+      inputSchema: z.object({
+        site_id: z.string(),
+        uid: z.string().describe("宿主站自己的用户 id，只在站内有效"),
+        name: z.string().optional(),
+        token: siteTokenSchema,
+      }),
+    },
+    wrap(async ({ site_id, token, uid, name }) => client(token).signIdentity(site_id, uid, name)),
+  );
+
+  server.registerTool(
     "verify_install",
     {
       title: "验收安装",

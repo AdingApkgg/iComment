@@ -210,6 +210,8 @@ struct SiteDetail {
 #[derive(Deserialize)]
 pub struct VerifyQuery {
     pub verify: Option<String>,
+    /// 一键签发可视化：填 uid 就在这里把 identity 打出来
+    pub sign: Option<String>,
 }
 
 pub async fn site_page(
@@ -255,16 +257,29 @@ pub async fn site_page(
         Some("") => None,
         Some(url) => Some(api::verify::run(&state, &detail.site.site_key, url).await?),
     };
+    let signed = query
+        .sign
+        .as_deref()
+        .map(str::trim)
+        .filter(|uid| !uid.is_empty())
+        .map(|uid| {
+            let header =
+                crate::identity::issue(&detail.site.site_secret, &detail.site.site_key, uid, None);
+            (uid.to_owned(), header)
+        });
     Ok(Html(crate::web::render(
         "站点",
         &crate::web::site_detail(
             &state,
             &detail.site,
             &detail.threads,
-            detail.pending,
-            detail.spam,
-            detail.total,
-            verdict.as_ref(),
+            &SiteOps {
+                pending: detail.pending,
+                spam: detail.spam,
+                total: detail.total,
+                verdict: verdict.as_ref(),
+                signed: signed.as_ref(),
+            },
         ),
         true,
     )))
@@ -497,15 +512,29 @@ fn verdict_html(result: &api::verify::VerifyResult) -> String {
     }
 }
 
+/// 判数、验收结果、试签结果打包，避免参数爆炸。
+#[derive(Default)]
+pub struct SiteOps<'a> {
+    pub pending: i64,
+    pub spam: i64,
+    pub total: i64,
+    pub verdict: Option<&'a api::verify::VerifyResult>,
+    pub signed: Option<&'a (String, String)>,
+}
+
 pub fn site_detail(
     state: &AppState,
     site: &site_web::SiteView,
     threads: &[thread_web::Thread],
-    pending: i64,
-    spam: i64,
-    total: i64,
-    verdict: Option<&api::verify::VerifyResult>,
+    ops: &SiteOps<'_>,
 ) -> String {
+    let SiteOps {
+        pending,
+        spam,
+        total,
+        verdict,
+        signed,
+    } = ops;
     let mut thread_rows = String::new();
     for t in threads {
         thread_rows.push_str(&format!(
@@ -543,6 +572,17 @@ pub fn site_detail(
 <div class="card"><h2>页面</h2><ul class="list">{thread_rows}</ul></div>
 <div class="card"><h2>嵌入代码</h2>
   <pre>{snippet}</pre>
+</div>
+<div class="card"><h2>透传身份</h2>
+  <p class="muted">站点服务端用这把秘钥给已登录用户签 5 分钟有效的 <code>X-IC-Identity</code>。
+  带上的评论免人机验证、免待审。秘钥别进前端。</p>
+  <p class="muted">site_key <code>{site_key}</code></p>
+  <pre>{secret}</pre>
+  <form method="get" action="/dashboard/sites/{id}" class="inline">
+    <input name="sign" placeholder="试签一个 uid" value="{sign_uid}">
+    <button>签发</button>
+  </form>
+  {signed_block}
 </div>
 <div class="card"><h2>验收</h2>
   <p class="muted">贴上代码并部署后，填页面地址让服务端抓一次，检查四要素是否齐全。</p>
@@ -583,6 +623,16 @@ pub fn site_detail(
             "服务端没配 Turnstile 密钥，验证暂时不会生效。"
         },
         snippet = esc(&crate::api::agent::embed_snippet(state, &site.site_key)),
+        site_key = esc(&site.site_key),
+        secret = esc(&site.site_secret),
+        sign_uid = signed.map(|(uid, _)| esc(uid)).unwrap_or_default(),
+        signed_block = signed
+            .map(|(uid, header)| format!(
+                r#"<p>uid <code>{}</code> 的头：</p><pre>{}</pre>"#,
+                esc(uid),
+                esc(header)
+            ))
+            .unwrap_or_default(),
     )
 }
 

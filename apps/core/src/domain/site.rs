@@ -20,11 +20,12 @@ pub struct Site {
     pub challenge_mode: String,
     pub widget_version: String,
     pub site_key: String,
+    pub site_secret: String,
     pub created_at: DateTime<Utc>,
 }
 
-const COLS: &str =
-    "id, origin, name, require_approval, challenge_mode, widget_version, site_key, created_at";
+const COLS: &str = "id, origin, name, require_approval, challenge_mode, widget_version, site_key, \
+                    site_secret, created_at";
 
 fn random_key() -> String {
     use rand::RngCore;
@@ -133,13 +134,15 @@ pub struct SiteView {
     pub challenge_mode: String,
     pub widget_version: String,
     pub site_key: String,
+    /// HMAC 秘钥：只在 owner 视角出现，用来签 `X-IC-Identity`
+    pub site_secret: String,
     pub created_at: DateTime<Utc>,
 }
 
 pub async fn view(state: &AppState, id: Uuid) -> Result<SiteView> {
     let view: Option<SiteView> = sqlx::query_as(
         "select id, origin, name, require_approval, challenge_mode, widget_version, site_key, \
-         created_at from site where id = $1 and deleted_at is null",
+         site_secret, created_at from site where id = $1 and deleted_at is null",
     )
     .bind(id)
     .fetch_optional(state.db())
@@ -213,7 +216,8 @@ pub async fn soft_delete(state: &AppState, id: Uuid) -> Result<()> {
 pub async fn list_for_owner(state: &AppState, owner: Uuid) -> Result<Vec<SiteView>> {
     let rows: Vec<SiteView> = sqlx::query_as(
         "select id, origin, name, require_approval, challenge_mode, widget_version, site_key, \
-         created_at from site where owner_id = $1 and deleted_at is null order by created_at",
+         site_secret, created_at from site where owner_id = $1 and deleted_at is null \
+         order by created_at",
     )
     .bind(owner)
     .fetch_all(state.db())

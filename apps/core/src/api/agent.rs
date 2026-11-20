@@ -14,7 +14,7 @@ use crate::{
     auth::{self, Agent, DeviceOutcome},
     domain::{account, comment, site, thread},
     error::{Code, Problem, Result},
-    markdown,
+    identity, markdown,
     state::AppState,
 };
 
@@ -445,6 +445,53 @@ pub async fn revoke_token(
         return Err(Problem::code(Code::Validation, "no such active token"));
     }
     Ok(Json(serde_json::json!({ "revoked": target })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SignInput {
+    pub uid: String,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Signed {
+    /// 直接放进 `X-IC-Identity` 头
+    pub header: String,
+    pub expires_in: i64,
+}
+
+/// 宿主站服务端签一段短时身份，前端带给评论接口即可免挑战、免待审。
+pub async fn sign_identity(
+    State(state): State<AppState>,
+    agent: Agent,
+    Path(site_id): Path<Uuid>,
+    Json(input): Json<SignInput>,
+) -> Result<Json<Signed>> {
+    ensure_site_scope(&agent, site_id)?;
+    let uid = input.uid.trim();
+    if uid.is_empty() || uid.len() > 128 {
+        return Err(Problem::field("uid", "1..128 chars"));
+    }
+    let secret = identity::site_secret(&state, site_id).await?;
+    Ok(Json(Signed {
+        header: identity::issue(
+            &secret,
+            &site_key_of(&state, site_id).await?,
+            uid,
+            input.name.as_deref(),
+        ),
+        expires_in: identity::MAX_AGE_SECS,
+    }))
+}
+
+async fn site_key_of(state: &AppState, site_id: Uuid) -> Result<String> {
+    let key: Option<String> =
+        sqlx::query_scalar("select site_key from site where id = $1 and deleted_at is null")
+            .bind(site_id)
+            .fetch_optional(state.db())
+            .await?;
+    key.ok_or_else(|| Problem::code(Code::SiteNotFound, "site not found"))
 }
 
 #[derive(Debug, Serialize)]

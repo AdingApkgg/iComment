@@ -7,6 +7,7 @@ import type {
   DeviceStart,
   Me,
   ModerateAction,
+  SignedIdentity,
   Site,
   SiteCreated,
   Stats,
@@ -142,6 +143,13 @@ export class Client {
   verifyInstall(siteId: string, url: string): Promise<VerifyResult> {
     return request<VerifyResult>(this.transport, "POST", `/agent/sites/${siteId}/verify`, {
       url,
+    }).then((r) => r.data);
+  }
+
+  /** 签一段短时身份给前端，带上即可免挑战、免待审。 */
+  signIdentity(siteId: string, uid: string, name?: string | null): Promise<SignedIdentity> {
+    return request<SignedIdentity>(this.transport, "POST", `/agent/sites/${siteId}/identity`, {
+      body: { uid, name: name ?? null },
     }).then((r) => r.data);
   }
 

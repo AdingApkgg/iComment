@@ -367,3 +367,78 @@ async fn discovery_documents_are_served() {
 
     h.finish().await;
 }
+
+#[tokio::test]
+async fn signed_identity_skips_review_and_challenge() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+
+    let token = h.login("ident@example.com").await;
+    let (key, site) = h.create_site(&token, "ident.example.com").await;
+    let path = format!("{V1}/agent/sites/{site}/identity");
+
+    let (status, signed) = h
+        .post_auth(
+            &path,
+            &token,
+            serde_json::json!({ "uid": "u-1", "name": "阿丁" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{signed}");
+    let header = signed["header"].as_str().expect("header").to_owned();
+    assert_eq!(signed["expires_in"], 300);
+
+    // 验过的身份：免待审、作者名取签名里的
+    let (status, created) = h
+        .with_identity(
+            &format!("{V1}/comments"),
+            &key,
+            &header,
+            serde_json::json!({ "path": "/signed", "body_md": "站点自己的用户发的" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    assert_eq!(created["status"], "visible", "{created}");
+    let id = created["id"].as_str().expect("id").to_owned();
+
+    let (status, page) = h
+        .get_anon(&format!("{V1}/comments?path=%2Fsigned"), &key)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let mine = page["comments"]
+        .as_array()
+        .expect("array")
+        .iter()
+        .find(|c| c["id"] == id.as_str())
+        .expect("comment present")
+        .clone();
+    assert_eq!(mine["author_name"], "阿丁", "{mine}");
+
+    // 改签名中间一个字符就降级：仍入库，但标成未验证并按匿名处理。
+    // 注意别改最后一个字符——base64 尾部有填充位，翻它可能仍是同一串字节。
+    let mut tampered: Vec<char> = header.chars().collect();
+    let mid = tampered.len() - 8;
+    tampered[mid] = if tampered[mid] == 'A' { 'B' } else { 'A' };
+    let tampered: String = tampered.into_iter().collect();
+    let (status, created) = h
+        .with_identity(
+            &format!("{V1}/comments"),
+            &key,
+            &tampered,
+            serde_json::json!({ "path": "/forged", "body_md": "签名被改过的一条" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+
+    let raw: i64 = sqlx::query_scalar(
+        "select count(*) from comment where body_md = '签名被改过的一条' and identity_unverified",
+    )
+    .fetch_one(&h.admin)
+    .await
+    .expect("count");
+    assert_eq!(raw, 1);
+
+    h.finish().await;
+}

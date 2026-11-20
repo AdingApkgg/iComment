@@ -85,3 +85,9 @@ export type VerifyResult = {
   | { status: "partial"; missing: VerifyFound[]; hint: string }
   | { status: "failed"; reason: string; hint: string }
 );
+
+export type SignedIdentity = {
+  /** 直接放进 `X-IC-Identity` 头 */
+  header: string;
+  expires_in: number;
+};

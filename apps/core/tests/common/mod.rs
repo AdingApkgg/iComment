@@ -24,7 +24,7 @@ pub const V1: &str = "/api/v1";
 pub struct Harness {
     pub state: AppState,
     app: Router,
-    admin: PgPool,
+    pub admin: PgPool,
     schema: String,
     /// 伪来源 IP，让每个用例落在自己的限流桶里。
     ip: Cell<String>,
@@ -61,23 +61,29 @@ impl Harness {
         let redis_url = env("IC_TEST_REDIS_URL")?;
         let schema = format!("t{}", uuid::Uuid::now_v7().simple());
 
-        let admin = PgPoolOptions::new()
-            .max_connections(2)
+        let root = PgPoolOptions::new()
+            .max_connections(1)
             .connect(&base)
             .await
             .ok()?;
         sqlx::query(sqlx::AssertSqlSafe(format!("create schema {schema}")))
-            .execute(&admin)
+            .execute(&root)
             .await
             .ok()?;
 
-        // 连接一建立就落在这个 schema 里，迁移与运行期才不会分歧
+        // 连接一建立就落在这个 schema 里，迁移、应用、断言三方才不会分歧
         let scoped = format!("{base}?options=-c%20search_path%3D{schema}");
+        let admin = PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&scoped)
+            .await
+            .ok()?;
         let pool = PgPoolOptions::new()
             .max_connections(4)
             .connect(&scoped)
             .await
             .ok()?;
+        root.close().await;
         sqlx::migrate!("./migrations").run(&pool).await.ok()?;
 
         let cfg = config::Config {
@@ -173,6 +179,25 @@ impl Harness {
 
     pub async fn get_anon(&self, uri: &str, key: &str) -> Json {
         let resp = self.raw("GET", uri, &[("x-site-key", key)], None).await;
+        to_json(resp).await
+    }
+
+    /// 带宿主站签名身份发评论。
+    pub async fn with_identity(
+        &self,
+        uri: &str,
+        key: &str,
+        identity: &str,
+        body: serde_json::Value,
+    ) -> Json {
+        let resp = self
+            .raw(
+                "POST",
+                uri,
+                &[("x-site-key", key), ("x-ic-identity", identity)],
+                Some(body),
+            )
+            .await;
         to_json(resp).await
     }
 

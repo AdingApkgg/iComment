@@ -49,7 +49,8 @@ pub fn build(state: AppState) -> Router {
         )
         .route("/sites/{site_id}/threads", get(api::agent::list_threads))
         .route("/sites/{site_id}/stats", get(api::agent::stats))
-        .route("/sites/{site_id}/verify", post(api::verify::verify_install));
+        .route("/sites/{site_id}/verify", post(api::verify::verify_install))
+        .route("/sites/{site_id}/identity", post(api::agent::sign_identity));
 
     // device flow 在拿到 token 之前就要能用
     let anon = Router::new()

@@ -14,7 +14,7 @@ use crate::{
     domain::{comment, site, thread},
     error::{Code, Problem, Result},
     extract::{ClientIp, SiteOrigin},
-    markdown,
+    identity, markdown,
     state::AppState,
 };
 
@@ -125,6 +125,7 @@ pub async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Json<CommentPage>> {
     let site = site::resolve(&state, &origin).await?;
+    // 拿到站点秘钥才能读 secret 列——这里不影响公开面
     let thread = thread::get_or_create(&state, site.id, &q.path, None).await?;
     let page = comment::page(&state, thread.id, true, q.cursor, q.limit).await?;
     Ok(Json(CommentPage {
@@ -226,7 +227,11 @@ pub async fn submit(
     let body_md = comment::validate_body(&input.body_md)?;
     let (spam, needs_review) = antispam::sniff(&body_md, input.author_name.as_deref());
 
-    if !skip_challenge && antispam::challenge_needed(&site.challenge_mode, spam) {
+    // 宿主站透传的身份：验过就采信签名里的值（免审核、免挑战），没验过只当展示
+    let identity = identity::read(site, headers);
+    let verified = matches!(&identity, Some((_, true)));
+
+    if !skip_challenge && !verified && antispam::challenge_needed(&site.challenge_mode, spam) {
         antispam::verify_challenge(state, input.challenge_token.as_deref(), ip).await?;
     }
 
@@ -234,10 +239,23 @@ pub async fn submit(
     let (parent_id, _depth) =
         comment::resolve_parent(state, site.id, thread.id, input.parent_id).await?;
 
+    let (author_uid, author_name, author_avatar) = match &identity {
+        Some((id, true)) => (
+            Some(id.uid.clone()),
+            input.author_name.clone().or_else(|| id.name.clone()),
+            input.author_avatar.clone().or_else(|| id.avatar.clone()),
+        ),
+        _ => (
+            input.author_uid.clone(),
+            input.author_name.clone(),
+            input.author_avatar.clone(),
+        ),
+    };
+
     let rendered = markdown::render(&body_md);
     let status: &'static str = if spam {
         "spam"
-    } else if site.require_approval && (needs_review || input.author_uid.is_none()) {
+    } else if site.require_approval && (needs_review || !verified) {
         "pending"
     } else {
         "visible"
@@ -252,9 +270,9 @@ pub async fn submit(
             body_md: body_md.clone(),
             body_html: rendered.html.clone(),
             author_kind: "anon",
-            author_uid: input.author_uid.clone(),
-            author_name: input.author_name.clone(),
-            author_avatar: input.author_avatar.clone(),
+            author_uid,
+            author_name,
+            author_avatar,
             author_email: input.author_email.clone(),
             ip_hash: antispam::ip_hash(state, ip).await,
             ua_hash: headers
@@ -268,7 +286,7 @@ pub async fn submit(
                 }),
             idempotency_key: input.idempotency_key.clone(),
             status,
-            identity_unverified: input.author_uid.is_some(),
+            identity_unverified: identity.is_some() && !verified,
         },
     )
     .await?;
