@@ -532,11 +532,17 @@ export class CommentWidget extends LitElement {
   }
 }
 
-/** 服务端的 HTML 已过白名单，这里直接插入。 */
+/**
+ * 服务端的 HTML 已过 ammonia 白名单。这里用 DOMParser 解析再搬节点，
+ * 不碰 innerHTML，解析失败时空白也比半截标签安全。
+ */
 function unsafe(markup: string) {
-  const template = document.createElement("template");
-  template.innerHTML = markup;
-  return template.content.cloneNode(true);
+  const doc = new DOMParser().parseFromString(markup, "text/html");
+  const fragment = document.createDocumentFragment();
+  for (const node of doc.body.childNodes) {
+    fragment.append(node.cloneNode(true));
+  }
+  return fragment;
 }
 
 function describe(err: unknown): string {
