@@ -249,16 +249,6 @@ fn src_of(tag: &str) -> Option<&str> {
     after.split('"').next()
 }
 
-/// 只要 src 最后一段是 icomment.js，CDN 换到哪都算对。
-fn script_url_is_ours(tag: &str) -> bool {
-    src_of(tag).is_some_and(|src| {
-        src.split('?')
-            .next()
-            .unwrap_or(src)
-            .ends_with("icomment.js")
-    })
-}
-
 fn build_hint(found: &Scan, site_key: &str, cdn: &str) -> String {
     let snippet = format!(
         "<script src=\"{cdn}/icomment.js?v={}\" data-site-key=\"{site_key}\" defer></script>",
