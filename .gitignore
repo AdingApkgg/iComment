@@ -1,0 +1,33 @@
+# Node / bun
+node_modules/
+bun.lockb
+.turbo/
+
+# Rust
+target/
+apps/core/target/
+
+# 构建产物
+dist/
+*.tsbuildinfo
+
+# 环境
+.env
+.env.*
+!.env.example
+
+# 数据
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 日志
+*.log
+npm-debug.log*

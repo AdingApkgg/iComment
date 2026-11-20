@@ -1,0 +1,40 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["**", "!**/dist", "!**/target", "!**/node_modules", "!apps/core/assets"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always" } },
+  "json": { "formatter": { "enabled": true } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error",
+        "useExhaustiveDependencies": "off"
+      },
+      "suspicious": { "noExplicitAny": "warn" },
+      "style": { "useConst": "error", "noNonNullAssertion": "warn" }
+    }
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "overrides": [
+    {
+      "includes": ["docs/**"],
+      "formatter": { "enabled": false }
+    },
+    {
+      "includes": ["packages/widget/**"],
+      "linter": { "rules": { "a11y": { "useValidAnchor": "error" } } }
+    }
+  ]
+}

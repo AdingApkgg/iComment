@@ -1,0 +1,19 @@
+# 反代到核心；/widget/v1 长缓存，API 不缓存（`>Cache-Control` 是覆盖核心自带的 short 缓存头）。
+{$IC_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	@widget path /widget/v1/*
+	header @widget >Cache-Control "public, max-age=3600"
+
+	@api path /api/*
+	header @api >Cache-Control "no-store"
+
+	reverse_proxy core:8080
+}

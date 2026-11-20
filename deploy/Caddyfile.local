@@ -1,0 +1,20 @@
+# 本地/内网试部署用：自签证书，不走 ACME。生产用 Caddyfile。
+{$IC_DOMAIN} {
+	tls internal
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	@widget path /widget/v1/*
+	header @widget >Cache-Control "public, max-age=3600"
+
+	@api path /api/*
+	header @api >Cache-Control "no-store"
+
+	reverse_proxy core:8080
+}

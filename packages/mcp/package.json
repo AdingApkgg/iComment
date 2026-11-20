@@ -1,0 +1,35 @@
+{
+  "name": "@icomment/mcp",
+  "version": "0.1.2",
+  "description": "iComment 的 MCP server：让 agent 自助建站、管评论",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AdingApkgg/iComment.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://github.com/AdingApkgg/iComment",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "icomment-mcp": "./dist/main.js"
+  },
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@icomment/sdk": "0.1.2",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6"
+  }
+}

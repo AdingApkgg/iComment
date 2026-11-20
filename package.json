@@ -1,0 +1,27 @@
+{
+  "name": "icomment",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "core:dev": "cargo run -p icomment-core --bin icomment-core",
+    "core:build": "cargo build --release -p icomment-core",
+    "core:test": "cargo test -p icomment-core",
+    "core:check": "cargo clippy --workspace --all-targets -- -D warnings"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8",
+    "turbo": "2.11.13",
+    "typescript": "7.0.2"
+  }
+}

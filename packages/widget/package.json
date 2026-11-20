@@ -1,0 +1,40 @@
+{
+  "name": "@icomment/widget",
+  "version": "0.1.2",
+  "description": "iComment 前端组件：一个自带样式的 Lit Web Component",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AdingApkgg/iComment.git",
+    "directory": "packages/widget"
+  },
+  "homepage": "https://github.com/AdingApkgg/iComment",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/icomment.js",
+  "module": "./dist/icomment.js",
+  "types": "./dist/src/icomment.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/icomment.d.ts",
+      "default": "./dist/icomment.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.json --emitDeclarationOnly",
+    "dev": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lit": "^3.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "vite": "8.3.8"
+  }
+}

@@ -1,0 +1,56 @@
+[workspace]
+resolver = "3"
+members = ["apps/core"]
+
+[workspace.package]
+version = "0.1.2"
+edition = "2024"
+rust-version = "1.94"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/AdingApkgg/iComment"
+
+[workspace.dependencies]
+axum = { version = "0.8.9", features = ["macros"] }
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "signal"] }
+tower = "0.5"
+tower-http = { version = "0.7.1", features = ["trace", "cors", "catch-panic", "timeout", "limit", "compression-gzip"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.154"
+sqlx = { version = "0.9.1", default-features = false, features = [
+  "runtime-tokio",
+  "tls-rustls-ring",
+  "postgres",
+  "chrono",
+  "uuid",
+  "macros",
+  "migrate",
+] }
+redis = { version = "1.8.2", features = ["tokio-comp", "connection-manager"] }
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "rustls",
+  "charset",
+  "http2",
+  "form",
+  "json",
+] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v7", "serde"] }
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+rand = "0.9"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+anyhow = "1"
+http = "1"
+pulldown-cmark = "0.13.6"
+ammonia = "4.2.5"
+regex = "1"
+
+# 单二进制自托管：小、快启动。strip 掉符号，LTO 收一遍。
+[profile.release]
+strip = "symbols"
+lto = "thin"
+codegen-units = 1
+panic = "abort"

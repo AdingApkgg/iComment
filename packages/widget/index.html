@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>iComment widget demo</title>
+    <style>
+      body {
+        margin: 0 auto;
+        max-width: 44rem;
+        padding: 3rem 1.25rem;
+        font: 16px/1.7 ui-sans-serif, system-ui, "PingFang SC", sans-serif;
+        color: #10131a;
+      }
+      h1 { font-size: 1.6rem; letter-spacing: -0.02em; }
+      .muted { color: #646d7c; }
+      hr { border: 0; border-top: 1px solid #e2e6ee; margin: 3rem 0 2rem; }
+    </style>
+  </head>
+  <body>
+    <h1>示例文章</h1>
+    <p class="muted">
+      下面嵌的就是线上分发的同一个组件。改 <code>api-base</code> / <code>site-key</code> 指向本地核心即可联调。
+    </p>
+    <hr />
+    <icomment-widget
+      api-base="http://127.0.0.1:8080/api/v1"
+      site-key="demo_site_key"
+      path="/hello"
+    ></icomment-widget>
+    <script type="module" src="../src/icomment.ts"></script>
+  </body>
+</html>

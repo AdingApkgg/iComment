@@ -1,0 +1,306 @@
+/* 控制台样式：一套变量，跟随系统明暗。 */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #12151a;
+  --muted: #6b7280;
+  --line: #e2e5ea;
+  --accent: #2f6df6;
+  --danger: #c0392b;
+  --ok: #1f8b4c;
+  --radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116;
+    --panel: #161a21;
+    --ink: #e6e9ef;
+    --muted: #8b93a1;
+    --line: #232a34;
+    --accent: #6f9dff;
+    --danger: #ff7b6b;
+    --ok: #46c98a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+header .brand {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+header .brand em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+nav {
+  display: flex;
+  gap: 14px;
+  margin-left: auto;
+  font-size: 14px;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+nav a:hover {
+  color: var(--accent);
+}
+
+main {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 26px 20px 60px;
+}
+
+footer {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 20px 40px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.card h1 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.card h2 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+label {
+  display: block;
+  margin: 12px 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+input[type="text"],
+input[type="email"],
+textarea,
+select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+button {
+  margin-top: 12px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+button.danger {
+  background: var(--danger);
+}
+
+form.inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row a {
+  color: var(--ink);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.row a:hover {
+  color: var(--accent);
+}
+
+.row .muted {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+pre {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  overflow-x: auto;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.pill.pending {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.pill.spam {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.pill.visible {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.comment {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.comment:last-child {
+  border-bottom: 0;
+}
+
+.comment .body {
+  margin: 6px 0;
+}
+
+.comment .body p {
+  margin: 0 0 6px;
+}
+
+.comment .meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.comment .actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.comment .actions button {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+@media (max-width: 560px) {
+  main {
+    padding: 18px 14px 40px;
+  }
+  header {
+    padding: 12px 14px;
+  }
+}
+
+.ok {
+  color: #17803d;
+}
+.warn {
+  color: #b42318;
+}

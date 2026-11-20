@@ -1,0 +1,98 @@
+# iComment
+
+开源自托管评论系统，为「agent 自助装站」设计：一句 `claude mcp add` + 一次设备授权，站点就能长出自己的评论区。
+
+Artalk / Waline / Twikoo 这一类先把「人」放在流程中间：进后台、开站点、手抄 snippet。iComment 把这三步交给 agent，人只在一处点确认。Rust + axum 单二进制，内嵌 widget 与迁移，前端是一份 12 KB 的 Lit Web Component，数据全在你自己库里。
+
+- 核心 AGPL-3.0；`packages/widget`、`packages/sdk`、`packages/mcp` 是 MIT —— 要塞进别人网站里的东西不能有传染性。
+- 默认 headless：REST 是唯一权威接口，MCP 只是同权限的一层薄封装，删掉它服务照跑。
+- 先纯公益全免费，额度字段留着不设闸。
+
+## 目录
+
+```
+apps/core          Rust / axum：REST + 控制台 + 内嵌 widget + 迁移
+packages/widget    Lit + Shadow DOM 评论组件（MIT）
+packages/sdk       带类型和 problem+json 解析的 API 客户端（MIT）
+packages/mcp       MCP server：device 登录、建站、管评论（MIT）
+deploy             Dockerfile / compose / Caddyfile
+docs               架构、MCP 契约、反垃圾、数据模型、widget、路线
+```
+
+## 本地跑
+
+需要 Rust 1.94+、bun、PostgreSQL 18、Redis。
+
+```bash
+docker run -d --name ic-db -p 25493:5432 -e POSTGRES_USER=icomment \
+  -e POSTGRES_PASSWORD=icomment -e POSTGRES_DB=icomment postgres:18-alpine
+docker run -d --name ic-redis -p 26493:6379 redis:8-alpine
+
+export IC_DATABASE_URL=postgres://icomment:icomment@127.0.0.1:25493/icomment
+export IC_REDIS_URL=redis://127.0.0.1:26493
+
+bun install
+./scripts/bundle-widget.sh       # 把 widget 产物塞进 apps/core/assets，供单二进制内嵌
+cargo run -p icomment-core       # 迁移在启动时自动执行，打开 http://127.0.0.1:8080
+```
+
+首次打开控制台注册账号，创建站点，页面会给出一段 `<script>` snippet，贴到主题里即可。
+
+## 给 agent 装
+
+```bash
+claude mcp add icomment -- npx -y @icomment/mcp   # 或本地：node packages/mcp/dist/main.js
+```
+
+然后让它 `start_login`：终端给出四位码，在 Web 控制台 `/device` 输入一次。之后的 `create_site` 会把 snippet 一起返回，agent 自己贴进模板并跑 `verify_install` —— 服务端会真的去抓那一页，缺 `script` / `ic-comment` / `site-key` / `path` 哪一项就报哪一项，附可直接照做的提示。
+
+不想给 MCP 也一样，REST 就够：
+
+```bash
+curl -X POST $BASE/api/v1/agent/sites/$SITE_ID/verify \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"url":"https://your.site/posts/hello"}'
+```
+
+## 部署
+
+```bash
+cp deploy/.env.example deploy/.env    # 填域名、密码，openssl rand -hex 32 生成 IC_SESSION_SECRET
+docker compose -f deploy/compose.yml --env-file deploy/.env up -d --build
+```
+
+Caddy 自动签 HTTPS 并反代到核心；PG / Redis 只在 compose 内网可达，不对外暴露端口。镜像基于 distroless（约 55 MB，无 shell），健康检查走 `icomment-core health` 子命令。
+
+证书：默认走 Let's Encrypt，需要域名已经解析到这台机器且 80/443 可达。内网或还没解析时叠加 `-f deploy/compose.local.yml`，改用自签证书。宿主 80/443 已被别的反代占用就设 `IC_HTTP_PORT` / `IC_HTTPS_PORT`。
+
+人机验证可选：填 `IC_TURNSTILE_SECRET` 与 `IC_TURNSTILE_SITE_KEY` 才生效，站点维度三态 `off / suspicious / always`，默认 `suspicious`（可疑才拦）。
+
+## 接口速览
+
+| 面                 | 前缀                                   | 鉴权                                            |
+| ------------------ | -------------------------------------- | ----------------------------------------------- |
+| widget 公开读 / 写 | `/api/v1`                              | `x-site-key` 或 `Origin`                        |
+| agent              | `/api/v1/agent`                        | `Authorization: Bearer tsa_…`（站点级或账号级） |
+| 设备授权           | `/api/v1/agent/device`、`/agent/token` | 无需                                            |
+| 控制台             | `/login`、`/dashboard`、`/sites`       | 签名 cookie                                     |
+
+错误统一 `application/problem+json`，带 `code`、`fields`，必要时 `next` 指引下一步；限流回 `Retry-After`。
+
+## 开发约定
+
+```bash
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+bunx biome check .
+bunx tsc -p packages/sdk/tsconfig.json --noEmit
+```
+
+`apps/core/assets/` 是构建产物，由 `scripts/bundle-widget.sh` 生成，不进 biome。
+
+## 文档
+
+`docs/architecture.md` 起手，往下是 `mcp-contract.md`、`antispam-auth.md`、`data-model.md`、`widget.md`、`roadmap.md`。
+
+## 许可
+
+核心 `apps/core` 与 `deploy` 为 AGPL-3.0-or-later，见 `LICENSE`；`packages/*` 为 MIT，见各自 `LICENSE`。
