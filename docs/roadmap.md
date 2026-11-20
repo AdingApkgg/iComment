@@ -22,7 +22,7 @@ PG + Redis、托管、device auth、llms.txt + install.md 上线、widget 发 CD
 ## 每阶段的硬门
 
 - S1 前：`verify_install` 在三个框架的失败态都能给出可行动 `hint`（不是只说失败）。✅ 判定拆成 script/site_key/defer/element/path 五项，缺哪项就报哪项并给改法（含整段 snippet），页面用别的 key 会点名；`scan` 单测 4 例 + 冒烟 `verify_reports_a_private_host_with_an_actionable_hint`、`verify_rejects_a_relative_url`。
-- S2 前：widget gzip ≤ 15KB，Lighthouse a11y ≥ 95。
+- S2 前：widget gzip ≤ 15KB，Lighthouse a11y ≥ 95。✅ gzip 11.5KB；Lighthouse accessibility 100（`deploy/demo/index.html`：补 label + `aria-live` + `aria-busy` + `prefers-reduced-motion`，演示页 byline 对比度 3.07→4.6）。
 - 上线前：`/embed` 页在 JS 禁用下可读可写。✅ `apps/core/src/embed.rs`，冒烟用例 `embed_page_works_without_javascript` 覆盖读、写、错误回显。
 - 上线前：全部写接口有幂等键，重放测试通过。✅ `Idempotency-Key` 头与 `idempotency_key` 字段等价，`idempotency_header_prevents_double_post` 验证重放返回同一行且 `created=false`。
 

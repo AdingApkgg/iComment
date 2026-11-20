@@ -8,7 +8,7 @@
 <icomment site="ck_xxx" path="/posts/a" theme="auto" lang="zh"></icomment>
 ```
 
-- 属性：`site`、`path`（缺省取 `location.pathname` 归一化）、`theme`(auto/light/dark)、`lang`、`max-depth`。
+- 属性：`site-key`、`api-base`、`path`（缺省取 `location.pathname` 归一化）、`theme`(auto/light/dark)、`max-depth`（写了就盖过站点设置）。
 - Shadow DOM 隔离：只用 CSS 自定义属性暴露主题（`--ic-accent`、`--ic-radius`、`--ic-font`、`--ic-size`），不漏全局样式。
 - 服务端默认只给最小骨架；样式由 CDN 的 `v1` CSS 提供。
 - 目标 ≤ 15KB gzip。首屏不拉评论，进入视口再取。
@@ -33,11 +33,11 @@ JS 未加载   → 若页面作者同时放 <noscript> 链接则可见（snippet
 
 - `POST` 带 `Idempotency-Key`（客户端生成 UUID），重试不重复。
 - Turnstile token 在当前页面存活期内复用，失败重取。
-- 乐观插入一条 `pending` 本地记录，服务端回包替换；被规则拦下时原地标黄「待审」。
+- 服务端是真理：提交后重新拉一页，`pending` 的条目自己带「待审」徽章，不做乐观插入（避免半条假数据）。
 
 ## 无障碍
 
-`aria-live="polite"` 播报新评论；表单 label 关联；键盘可达；`prefers-reduced-motion` 关闭动画；对比度 ≥ 4.5:1。
+`aria-live="polite"` 播报结果；三个输入都有 `label`（视觉隐藏的 `.sr` 文案）；列表带 `aria-busy`；`prefers-reduced-motion` 时关平滑滚动；对比度 ≥ 4.5:1。Lighthouse accessibility 100 由 `deploy/demo/index.html` 跑出，S2 前每次改样式复跑。
 
 ## 暗色
 

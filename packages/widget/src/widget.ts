@@ -56,6 +56,7 @@ export class CommentWidget extends LitElement {
     apiBase: { type: String, attribute: "api-base" },
     path: { type: String, attribute: "path" },
     theme: { type: String, attribute: "theme" },
+    maxDepth: { type: Number, attribute: "max-depth" },
     _view: { state: true },
   };
 
@@ -91,6 +92,31 @@ export class CommentWidget extends LitElement {
       --ic-line: #2a313d;
       --ic-bg: #10131a;
       --ic-brand: #fff;
+    }
+    :host([theme="light"]) {
+      --ic-fg: #10131a;
+      --ic-muted: #646d7c;
+      --ic-line: #e2e6ee;
+      --ic-bg: #fff;
+      --ic-brand: #10131a;
+      --ic-ok: #0b7a4b;
+      --ic-bad: #b42318;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      :host {
+        scroll-behavior: auto;
+      }
+    }
+    /* 只给读屏用的标签，视觉上隐藏。 */
+    .sr {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
     h2 {
       margin: 0 0 0.75rem;
@@ -261,6 +287,8 @@ export class CommentWidget extends LitElement {
   apiBase = "";
   path = "";
   theme = "";
+  /** 折叠层级：缺省用站点设置，写了就以属性为准（服务端仍会挡）。 */
+  maxDepth = 0;
   private api: Api | null = null;
   private _view: View = blank();
   private turnstileToken: string | null = null;
@@ -393,6 +421,7 @@ export class CommentWidget extends LitElement {
     comment: Comment,
     tree: Map<string | null, Comment[]>,
     depth: number,
+    limit: number,
   ): TemplateResult {
     const kids = tree.get(comment.id) ?? [];
     const badges = [];
@@ -413,12 +442,12 @@ export class CommentWidget extends LitElement {
       <div class="body">${unsafe(comment.body_html)}</div>
       ${badges.length ? html`<div class="badges">${badges.map((b) => html`<span class="badge">${b}</span>`)}</div>` : nothing}
       ${
-        kids.length && depth < 6
+        kids.length && depth < limit
           ? html`<div class="children">
             ${repeat(
               kids,
               (c) => c.id,
-              (c: Comment) => this.renderComment(c, tree, depth + 1),
+              (c: Comment) => this.renderComment(c, tree, depth + 1, limit),
             )}
           </div>`
           : nothing
@@ -452,14 +481,17 @@ export class CommentWidget extends LitElement {
 
     const tree = byParent(v.comments);
     const roots = tree.get(null) ?? [];
+    const limit = this.maxDepth || meta?.max_depth || 6;
 
     return html`
       <h2>
         ${v.total} 条评论
         ${meta?.require_approval ? html`<span class="count">（先审后发）</span>` : nothing}
       </h2>
-      ${v.notice ? html`<p class="notice">${v.notice}</p>` : nothing}
-      ${v.error ? html`<p class="error">${v.error}</p>` : nothing}
+      <div aria-live="polite">
+        ${v.notice ? html`<p class="notice">${v.notice}</p>` : nothing}
+        ${v.error ? html`<p class="error">${v.error}</p>` : nothing}
+      </div>
 
       <form @submit=${this.submit}>
         <fieldset>
@@ -474,22 +506,30 @@ export class CommentWidget extends LitElement {
               : nothing
           }
           <div class="pair">
-            <input
-              placeholder="昵称（可选）"
-              autocomplete="nickname"
-              .value=${live(v.name)}
-              @input=${(e: InputEvent) =>
-                (this._view = { ...this._view, name: (e.target as HTMLInputElement).value })}
-            />
-            <input
-              type="email"
-              placeholder="邮箱（可选，不公开）"
-              autocomplete="email"
-              .value=${live(v.email)}
-              @input=${(e: InputEvent) =>
-                (this._view = { ...this._view, email: (e.target as HTMLInputElement).value })}
-            />
+            <label>
+              <span class="sr">昵称</span>
+              <input
+                placeholder="昵称（可选）"
+                autocomplete="nickname"
+                .value=${live(v.name)}
+                @input=${(e: InputEvent) =>
+                  (this._view = { ...this._view, name: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+            <label>
+              <span class="sr">邮箱（不公开）</span>
+              <input
+                type="email"
+                placeholder="邮箱（可选，不公开）"
+                autocomplete="email"
+                .value=${live(v.email)}
+                @input=${(e: InputEvent) =>
+                  (this._view = { ...this._view, email: (e.target as HTMLInputElement).value })}
+              />
+            </label>
           </div>
+          <label>
+          <span class="sr">评论内容，支持 Markdown</span>
           <textarea
             placeholder="说点什么… 支持 Markdown"
             maxlength=${meta?.max_body_bytes ?? 8192}
@@ -497,6 +537,7 @@ export class CommentWidget extends LitElement {
             @input=${(e: InputEvent) =>
               (this._view = { ...this._view, body: (e.target as HTMLTextAreaElement).value })}
           ></textarea>
+          </label>
           ${meta?.challenge_mode === "always" ? html`<div class="turnstile"></div>` : nothing}
           <div class="row">
             <span class="muted">${v.body.length} 字</span>
@@ -507,11 +548,11 @@ export class CommentWidget extends LitElement {
         </fieldset>
       </form>
 
-      <ul>
+      <ul ?aria-busy=${v.loading}>
         ${repeat(
           roots,
           (c) => c.id,
-          (c: Comment) => this.renderComment(c, tree, 0),
+          (c: Comment) => this.renderComment(c, tree, 0, limit),
         )}
       </ul>
       ${
