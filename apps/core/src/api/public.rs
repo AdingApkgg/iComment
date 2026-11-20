@@ -224,6 +224,12 @@ pub async fn submit(
     )
     .await?;
 
+    // 单站日写入软顶：超了只强制进队列，不拒
+    let daily = antispam::count(state, &format!("ic:daily:{}", site.id), 86_400)
+        .await
+        .unwrap_or(0);
+    let soft_capped = daily > antispam::DAILY_SOFT_CAP;
+
     let body_md = comment::validate_body(&input.body_md)?;
     let (spam, needs_review) = antispam::sniff(&body_md, input.author_name.as_deref());
 
@@ -255,7 +261,7 @@ pub async fn submit(
     let rendered = markdown::render(&body_md);
     let status: &'static str = if spam {
         "spam"
-    } else if site.require_approval && (needs_review || !verified) {
+    } else if soft_capped || (site.require_approval && (needs_review || !verified)) {
         "pending"
     } else {
         "visible"

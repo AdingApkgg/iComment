@@ -67,6 +67,19 @@ pub async fn hit(state: &AppState, key: &str, limit: i64, window_secs: usize) ->
     Ok(count)
 }
 
+/// 单站日写入软顶：超了只强制进队列，不拒。
+pub const DAILY_SOFT_CAP: i64 = 1000;
+
+/// 只计数不报错：返回本次累计值，由调用方决定怎么降级。
+pub async fn count(state: &AppState, key: &str, window_secs: usize) -> anyhow::Result<i64> {
+    let mut conn = state.redis().clone();
+    let count: i64 = conn.incr(key, 1).await?;
+    if count == 1 {
+        let _: std::result::Result<(), _> = conn.expire(key, window_secs as i64).await;
+    }
+    Ok(count)
+}
+
 /// Turnstile 校验。未配置 secret（dev）时直接通过。
 /// 三态策略：always 一律验；suspicious 只在内容可疑时验；off 不验。
 /// 已经被判成 spam 的直接进垃圾箱，不必再耗一次验证。

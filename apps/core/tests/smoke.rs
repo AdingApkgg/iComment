@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use icomment_core::antispam;
 
 use crate::common::{Harness, V1};
 
@@ -513,5 +514,48 @@ async fn verify_rejects_a_relative_url() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "validation_failed");
     assert_eq!(body["fields"][0]["field"], "url");
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn daily_soft_cap_forces_review_but_keeps_accepting() {
+    let Some(h) = Harness::start().await else {
+        return;
+    };
+    let token = h.login("cap@example.com").await;
+    let (key, site_id) = h.create_site(&token, "https://cap.example.com").await;
+
+    // 日计数置到软顶之上，模拟当天已写满
+    let mut conn = h.state.redis().clone();
+    let _: i64 = redis::cmd("SET")
+        .arg(format!("ic:daily:{site_id}"))
+        .arg(antispam::DAILY_SOFT_CAP + 1)
+        .query_async(&mut conn)
+        .await
+        .expect("seed counter");
+
+    let (status, body) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/cap", "body_md": "超过软顶的评论", "author_name": "阿丁" }),
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "pending", "{body}");
+    assert_eq!(body["created"], true);
+
+    // 第二次仍然接收，说明是降级而不是拒绝
+    let (status, body) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/cap", "body_md": "再来一条" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "pending", "{body}");
+
     h.finish().await;
 }

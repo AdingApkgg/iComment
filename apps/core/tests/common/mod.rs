@@ -269,16 +269,27 @@ impl Harness {
 
     /// 建站并按需关掉审核与验证，返回 (site_key, site_id)。
     pub async fn create_site(&self, token: &str, origin: &str) -> (String, uuid::Uuid) {
+        self.create_site_with(token, origin, serde_json::json!({}))
+            .await
+    }
+
+    /// 覆盖站点参数，例如关掉审核。
+    pub async fn create_site_with(
+        &self,
+        token: &str,
+        origin: &str,
+        extra: serde_json::Value,
+    ) -> (String, uuid::Uuid) {
+        let mut payload = serde_json::json!({
+            "origin": origin,
+            "require_approval": false,
+            "challenge_mode": "off",
+        });
+        for (k, v) in extra.as_object().into_iter().flatten() {
+            payload[k] = v.clone();
+        }
         let (status, body) = self
-            .post_auth(
-                &format!("{V1}/agent/sites"),
-                token,
-                serde_json::json!({
-                    "origin": origin,
-                    "require_approval": false,
-                    "challenge_mode": "off",
-                }),
-            )
+            .post_auth(&format!("{V1}/agent/sites"), token, payload)
             .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         (

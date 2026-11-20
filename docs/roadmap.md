@@ -36,7 +36,7 @@ WordPress 插件、OAuth 登录、实时 socket、自建 ML 反垃圾、移动�
 |---|---|
 | agent 装失败率高 → 用户看到空评论区 | verify 三态 + 可行动 hint；S0 阶段用干净会话反复压 |
 | spam 直打 API | 默认 pending + Turnstile + 审计，见 `antispam-auth.md` |
-| 全免费无上限被刷存储 | 单评论 8KB 上限、单站日写入软顶（超了只降级不拒） |
+| 全免费无上限被刷存储 | 单评论 8KB 上限；单站日写入软顶 1000 条（超了强制进审核队列，不拒收，`antispam::DAILY_SOFT_CAP`，用例 `daily_soft_cap_forces_review_but_keeps_accepting`） |
 | Lit 被站点 CSP 拦 | snippet 给带 nonce 占位注释，install.md 里写清怎么加 |
 | AGPL 吓退企业 | widget/sdk/mcp 是 MIT，只有 core 是 AGPL；README 首行写明 |
 | 与 Giscus/Waline 同质 | 唯一差异点是 agent 自助路径，所有文案都从这条讲 |
