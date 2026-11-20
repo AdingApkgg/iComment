@@ -399,7 +399,7 @@ export class CommentWidget extends LitElement {
     if (comment.status === "pending") badges.push("待审");
     if (comment.identity_unverified) badges.push("未验证");
 
-    return html`<li>
+    return html`<li class="comment">
       <div class="head">
         ${
           comment.author_avatar

@@ -127,10 +127,16 @@ pub async fn create_site(
 }
 
 pub fn embed_snippet(state: &AppState, site_key: &str) -> String {
+    // CDN 可以指到目录（/widget/v1），也可以直接指到文件；两种都给对了
+    let cdn = &state.cfg().widget_cdn;
+    let src = if cdn.ends_with(".js") {
+        cdn.clone()
+    } else {
+        format!("{cdn}/icomment.js")
+    };
     format!(
-        "<script src=\"{}/icomment.js?v={version}\" data-site-key=\"{site_key}\" defer></script>\n\
+        "<script src=\"{src}?v={version}\" data-site-key=\"{site_key}\" defer></script>\n\
          <noscript>评论区需要 JavaScript</noscript>",
-        state.cfg().widget_cdn,
         version = env!("CARGO_PKG_VERSION"),
         site_key = site_key
     )

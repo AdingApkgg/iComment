@@ -43,6 +43,16 @@ impl AppState {
     pub fn http(&self) -> &reqwest::Client {
         &self.0.http
     }
+
+    /// 换一份配置（测试里改单个开关用）。
+    pub fn with_cfg(&self, cfg: Settings) -> Self {
+        Self(Arc::new(Inner {
+            db: self.0.db.clone(),
+            redis: self.0.redis.clone(),
+            cfg,
+            http: self.0.http.clone(),
+        }))
+    }
 }
 
 impl FromRef<AppState> for Settings {

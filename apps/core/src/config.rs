@@ -104,3 +104,9 @@ impl std::ops::Deref for Settings {
         &self.0
     }
 }
+
+impl std::ops::DerefMut for Settings {
+    fn deref_mut(&mut self) -> &mut Config {
+        &mut self.0
+    }
+}

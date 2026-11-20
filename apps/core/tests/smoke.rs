@@ -442,3 +442,26 @@ async fn signed_identity_skips_review_and_challenge() {
 
     h.finish().await;
 }
+
+#[tokio::test]
+async fn embed_snippet_does_not_double_the_file_name() {
+    let Some(h) = common::Harness::start().await else {
+        return;
+    };
+    let token = h.login("snippet@example.com").await;
+    let (key, _site_id) = h.create_site(&token, "https://snippet.example.com").await;
+    for cdn in [
+        "http://127.0.0.1:8080/widget/v1",
+        "http://cdn.example.com/icomment.js",
+    ] {
+        let mut cfg = h.state.cfg().clone();
+        cfg.widget_cdn = cdn.to_owned();
+        let snippet = icomment_core::api::agent::embed_snippet(&h.state.with_cfg(cfg), &key);
+        assert_eq!(snippet.matches("icomment.js").count(), 1, "{snippet}");
+        assert!(
+            snippet.contains(&format!("data-site-key=\"{key}\"")),
+            "{snippet}"
+        );
+    }
+    h.finish().await;
+}
