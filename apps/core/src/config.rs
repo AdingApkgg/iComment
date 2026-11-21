@@ -15,8 +15,10 @@ pub struct Config {
     pub turnstile_secret: Option<String>,
     /// Akismet key；配了才会对外发判定请求。
     pub akismet_key: Option<String>,
-    /// 附图目录；空则不开放上传。
+    /// 附图目录；空则落到进程内存（冒烟用）。
     pub upload_dir: String,
+    /// SeaweedFS filer 基址（如 `http://seaweedfs:8888/uploads`）；配了就用它存字节。
+    pub seaweed_filer_url: Option<String>,
     /// 判定接口，默认官方地址；自建代理或测试时改这里。
     pub akismet_endpoint: String,
     pub turnstile_site_key: Option<String>,
@@ -88,7 +90,8 @@ impl Config {
             turnstile_site_key: var("IC_TURNSTILE_SITE_KEY"),
             turnstile_secret: var("IC_TURNSTILE_SECRET"),
             akismet_key: var("IC_AKISMET_KEY"),
-            upload_dir: var("IC_UPLOAD_DIR").unwrap_or_else(|| "var/uploads".to_owned()),
+            upload_dir: var("IC_UPLOAD_DIR").unwrap_or_default(),
+            seaweed_filer_url: var("IC_SEAWEED_FILER_URL"),
             akismet_endpoint: var("IC_AKISMET_ENDPOINT")
                 .unwrap_or_else(|| "https://rest.akismet.com/1.1/comment-check".to_owned()),
             widget_cdn,
@@ -96,6 +99,11 @@ impl Config {
             verify_private,
             cors_origins,
         })
+    }
+
+    /// 有 filer 或本地目录才谈得上存图。
+    pub fn uploads_enabled(&self) -> bool {
+        self.seaweed_filer_url.is_some() || !self.upload_dir.trim().is_empty()
     }
 
     /// 只有两个 key 都配了才算能开挑战，缺一个就整体退化成 off。

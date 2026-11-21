@@ -114,6 +114,8 @@ impl Harness {
             verify_private: false,
             cors_origins: Vec::new(),
             upload_dir: tmp_upload_dir(),
+            // 有 filer 就测真后端，否则落临时目录
+            seaweed_filer_url: env("IC_TEST_SEAWEED_URL"),
         };
         tweak(&mut cfg);
 

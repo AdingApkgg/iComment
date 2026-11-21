@@ -80,7 +80,7 @@ Akismet 兜底也可选：只填 `IC_AKISMET_KEY` 就生效，只对本地规则
 | 审核留痕           | `/dashboard/sites/{id}/audit`           | 每次放行/隐藏/删除都记一条，可按评论回看         |
 | 域名黑名单         | 站点设置面板 / `update_site`            | 命中即进垃圾箱，子域一并拦；关键词与链接数仍兜底 |
 | Akismet            | `IC_AKISMET_KEY`（可选）                | 本地放行后再问一次；超时或报错按本地结论走       |
-| 附图               | `POST /api/v1/uploads`、`/media/{file}` | 上传回占位符，`/media` 长缓存不可变              |
+| 附图               | `POST /api/v1/uploads`、`/media/{hash}` | 上传回占位符；内容寻址，`/media` 长缓存不可变  |
 
 错误统一 `application/problem+json`，带 `code`、`fields`，必要时 `next` 指引下一步；限流回 `Retry-After`。
 
@@ -88,7 +88,7 @@ Akismet 兜底也可选：只填 `IC_AKISMET_KEY` 就生效，只对本地规则
 
 反应：`POST|DELETE /api/v1/comments/{id}/reactions/{kind}`，`kind` 取 `up|heart|haha|thinking|party`。匿名访客首次投票会拿到签名 `ic_voter` cookie，同一人对同一表情只计一次。
 
-附图：`POST /api/v1/uploads`（multipart，字段 `file`，≤4MiB，PNG/JPEG/WebP/GIF）回 `markdown` 片段，贴进 `body_md` 即可，提交评论时展开成 `<图绝对地址>`；每条最多 4 张，每 IP 每小时 40 张。只按魔数判类型（不收 SVG），图落在 `IC_UPLOAD_DIR`（默认 `var/uploads`），一天没被引用的自动清理。
+附图按内容寻址（CAS）：`POST /api/v1/uploads`（multipart，字段 `file`，≤4MiB，PNG/JPEG/WebP/GIF）回 `markdown` 片段，贴进 `body_md` 即可，提交评论时展开成 `/media/<sha256>`；每条最多 4 张，每 IP 每小时 40 张。只按魔数判类型（不收 SVG），同样的图只存一份（文件名就是内容哈希，天然去重、可长缓存）。字节存 SeaweedFS 的 filer（`IC_SEAWEED_FILER_URL`，compose 里已带 master/volume/filer 与数据卷），本地开发可退回本地目录（`IC_UPLOAD_DIR`），一天没被引用的自动清理。
 
 无 JS 兜底：`/embed/<site_key>/<path>` 是服务端渲染的评论区，原生表单就能发；widget 拿不到元信息时也直接给这个链接。agent 可以先读 `/llms.txt` 与 `/install.md` 自己装。
 

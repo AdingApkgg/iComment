@@ -7,6 +7,7 @@ pub mod akismet;
 pub mod antispam;
 pub mod api;
 pub mod auth;
+pub mod blob;
 pub mod config;
 pub mod discover;
 pub mod domain;

@@ -948,31 +948,13 @@ async fn anonymous_react_gets_a_signed_voter_cookie() {
     h.finish().await;
 }
 
-const PNG: [u8; 33] = {
-    let mut b = [0u8; 33];
-    b[0] = 0x89;
-    b[1] = b'P';
-    b[2] = b'N';
-    b[3] = b'G';
-    b[4] = 0x0d;
-    b[5] = 0x0a;
-    b[6] = 0x1a;
-    b[7] = 0x0a;
-    b[11] = 13;
-    b[12] = b'I';
-    b[13] = b'H';
-    b[14] = b'D';
-    b[15] = b'R';
-    b[16] = 0;
-    b[17] = 0;
-    b[18] = 2;
-    b[19] = 128; // 640
-    b[20] = 0;
-    b[21] = 0;
-    b[22] = 1;
-    b[23] = 224; // 480
-    b
-};
+/// 一张 640x480 的 PNG（IHDR 尺寸真实，CRC 不校验），多传几次就是同一份内容。
+const PNG: [u8; 67] = [
+    0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R', 0, 0, 2,
+    128, 0, 0, 1, 224, 8, 6, 0, 0, 0, 0x1f, 0x15, 0xc4, 0x89, 0, 0, 0, 10, b'I', b'D', b'A', b'T',
+    0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0, 0, 0, 0,
+    b'I', b'E', b'N', b'D', 0xae, 0x42, 0x60, 0x82,
+];
 
 async fn upload(h: &Harness, key: &str) -> (StatusCode, serde_json::Value) {
     to_json(h.post_multipart(&format!("{V1}/uploads"), key, &PNG).await).await
@@ -1022,6 +1004,8 @@ async fn upload_then_comment_binds_the_image() {
         .expect("absolute url")
         .1
         .to_owned();
+    // CAS：文件名就是内容的 sha256，两次上传同一张图得到同一个地址
+    assert_eq!(path, icomment_core::blob::key_of(&PNG));
     assert!(html.contains(&path), "{html}");
     assert_eq!(posted["attachments"].as_array().expect("list").len(), 1);
 
@@ -1097,6 +1081,56 @@ async fn attachment_rules_are_enforced() {
     let (status, posted) = post_with_images(&h, &key, &snippets.join("\n")).await;
     assert_eq!(status, StatusCode::OK, "{posted}");
     assert_eq!(posted["attachments"].as_array().expect("list").len(), 4);
+
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn identical_bytes_are_stored_once() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+    let token = h.login("cas@example.com").await;
+    let (key, _) = h.create_site(&token, "cas.example.com").await;
+
+    let (_, first) = upload(&h, &key).await;
+    h.unique_ip();
+    let (_, second) = upload(&h, &key).await;
+    assert_eq!(first["url"], second["url"]);
+    assert_ne!(first["id"], second["id"]);
+
+    // 同一张图两条评论都贴，引用两处而字节只有一份
+    let snippet = format!("{} {}", first["markdown"], second["markdown"]);
+    let (status, posted) = post_with_images(&h, &key, &snippet).await;
+    assert_eq!(status, StatusCode::OK, "{posted}");
+    assert_eq!(posted["attachments"].as_array().expect("list").len(), 2);
+
+    // 两条都没人引用、且放够一天时才真删字节
+    sqlx::query("update blob set created_at = now() - interval '2 days'")
+        .execute(&h.admin)
+        .await
+        .expect("age blob");
+    let removed = icomment_core::blob::sweep_orphans(&h.state)
+        .await
+        .expect("sweep");
+    assert_eq!(removed, 0, "还被引用着");
+    assert_eq!(h.media("").await.status(), StatusCode::NOT_FOUND);
+
+    // 解绑到没人引用，放够一天就被真删（字节也删）
+    sqlx::query("delete from attachment")
+        .execute(&h.admin)
+        .await
+        .expect("unlink");
+    let hash = first["path"].as_str().expect("path").to_owned();
+    assert!(icomment_core::blob::get(&h.state, &hash).await.is_some());
+    assert_eq!(
+        icomment_core::blob::sweep_orphans(&h.state)
+            .await
+            .expect("sweep"),
+        1
+    );
+    assert!(icomment_core::blob::get(&h.state, &hash).await.is_none());
 
     h.finish().await;
 }

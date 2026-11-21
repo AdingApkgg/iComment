@@ -1,4 +1,4 @@
-# iComment 自托管部署：核心 + PG + Redis，Caddy 在前面收 HTTPS。
+# iComment 自托管部署：核心 + PG + Redis + SeaweedFS（存附图），Caddy 在前面收 HTTPS。
 # 用法：
 #   cp deploy/.env.example deploy/.env   # 填域名与密码
 #   docker compose -f deploy/compose.yml --env-file deploy/.env up -d --build
@@ -21,15 +21,15 @@ services:
       IC_TURNSTILE_SECRET: ${IC_TURNSTILE_SECRET:-}
       IC_TURNSTILE_SITE_KEY: ${IC_TURNSTILE_SITE_KEY:-}
       IC_SESSION_SECRET: ${IC_SESSION_SECRET}
-      IC_UPLOAD_DIR: /data/uploads
+      # 附图存 SeaweedFS 的 filer；留空则退回容器内文件，重启即丢
+      IC_SEAWEED_FILER_URL: http://seaweedfs:8888/uploads
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      # 附图；distroless 的 WORKDIR 是 /data，只有这里可写
-      - uploads:/data/uploads
+      seaweedfs:
+        condition: service_started
     expose:
       - "8080"
     healthcheck:
@@ -68,6 +68,37 @@ services:
       timeout: 3s
       retries: 10
 
+  weed-volume:
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    # 单卷节点，数据落在卷里；沿用官方 server 的默认端口
+    command: >
+      volume -master=weed-master:9333 -ip=weed-volume -dir=/data -max=0
+    volumes:
+      - weeddata:/data
+    depends_on:
+      - weed-master
+
+  weed-master:
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    command: >
+      master -ip=weed-master -mdir=/data -volumeSizeLimitMB=1024 -defaultReplication=000
+    volumes:
+      - weedmaster:/data
+
+  seaweedfs:
+    # filer 是核心唯一会说话的节点：按路径存取字节，不做 S3 签名
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    command: >
+      filer -master=weed-master:9333 -ip=seaweedfs -port=8888
+    volumes:
+      - weedfiler:/data
+    depends_on:
+      - weed-master
+      - weed-volume
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -85,8 +116,10 @@ services:
       - caddyconf:/config
 
 volumes:
+  weeddata:
+  weedmaster:
+  weedfiler:
   pgdata:
   redisdata:
   caddydata:
   caddyconf:
-  uploads:

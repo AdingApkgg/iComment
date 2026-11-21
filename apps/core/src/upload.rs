@@ -1,21 +1,15 @@
-//! 评论附图。上传只做一次校验并落盘，返回可以在 `body_md` 里引用的占位符；
-//! 评论提交时把占位符换成真实 URL 并绑定到评论。
+//! 评论附图。上传只做一次校验并落盘（内容寻址，见 `blob`），返回可以在 `body_md`
+//! 里引用的占位符；评论提交时把占位符换成真实 URL 并绑定到评论。
 //!
 //! 只收位图（PNG/JPEG/WebP/GIF），按文件头判定，不信扩展名和 `Content-Type`。
 
-use std::path::PathBuf;
-
-use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-use crate::{
-    error::{Code, Problem, Result},
-    state::AppState,
-};
+use crate::error::{Code, Problem, Result};
 
 pub const MAX_FILE_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_PER_COMMENT: usize = 4;
-/// 占位符：`![alt](ic-attachment:<id>)`，评论提交时展开。
+/// 占位符：`![alt](ic-attachment:<attachment id>)`，评论提交时展开成 `/media/<hash>`。
 pub const SCHEME: &str = "ic-attachment:";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +21,8 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn ext(self) -> &'static str {
+    /// 落盘用的扩展名，也是 CAS 键的后缀。
+    pub fn ext(self) -> &'static str {
         match self {
             Self::Png => "png",
             Self::Jpeg => "jpg",
@@ -144,36 +139,7 @@ fn jpeg_dimensions(bytes: &[u8]) -> Option<(i32, i32)> {
     None
 }
 
-fn dir(state: &AppState) -> PathBuf {
-    PathBuf::from(&state.cfg().upload_dir)
-}
-
-/// 落盘一个文件，返回 `(id, 相对路径)`。
-pub async fn store(state: &AppState, kind: Kind, bytes: &[u8]) -> Result<(Uuid, String)> {
-    let id = Uuid::now_v7();
-    let name = format!("{id}.{}", kind.ext());
-    let dir = dir(state);
-    tokio::fs::create_dir_all(&dir)
-        .await
-        .map_err(|e| Problem::code(Code::Internal, format!("upload dir: {e}")))?;
-    let mut file = tokio::fs::File::create(dir.join(&name))
-        .await
-        .map_err(|e| Problem::code(Code::Internal, format!("upload write: {e}")))?;
-    file.write_all(bytes)
-        .await
-        .map_err(|e| Problem::code(Code::Internal, format!("upload write: {e}")))?;
-    file.flush().await.ok();
-    Ok((id, name))
-}
-
-/// 读回文件内容（demo 页与静态服务缺失时的兜底）。
-pub async fn read(state: &AppState, file: &str) -> Option<Vec<u8>> {
-    if file.contains('/') || file.contains("..") {
-        return None;
-    }
-    tokio::fs::read(dir(state).join(file)).await.ok()
-}
-
+/// 按扩展名给类型，传 `png` 或 `x.png` 都行。
 pub fn content_type(file: &str) -> &'static str {
     match file.rsplit('.').next() {
         Some("png") => "image/png",
@@ -263,13 +229,13 @@ mod tests {
     fn expand_swaps_only_bound_ids() {
         let mut links = std::collections::HashMap::new();
         let id = Uuid::now_v7();
-        links.insert(id, format!("/media/{id}.png"));
+        links.insert(id, format!("/media/{id}"));
         let body = format!(
             "a ![](ic-attachment:{id}) b ![](ic-attachment:{})",
             Uuid::nil()
         );
         let out = expand(&body, &links);
-        assert!(out.contains(&format!("/media/{id}.png")));
+        assert!(out.contains(&format!("/media/{id}")));
         assert!(out.contains("ic-attachment:00000000-0000-0000-0000-000000000000"));
     }
 

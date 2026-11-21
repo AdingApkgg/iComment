@@ -10,7 +10,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    antispam,
+    antispam, blob,
     domain::{attachment, site},
     error::{Code, Problem, Result},
     extract::{ClientIp, SiteOrigin},
@@ -36,6 +36,9 @@ pub async fn create(
     ClientIp(ip): ClientIp,
     mut multipart: Multipart,
 ) -> Result<Json<Stored>> {
+    if !state.cfg().uploads_enabled() {
+        return Err(Problem::code(Code::Validation, "uploads are disabled"));
+    }
     let site = site::resolve(&state, &origin).await?;
     antispam::hit(
         &state,
@@ -69,10 +72,12 @@ pub async fn create(
     let kind = upload::sniff(&buf)
         .ok_or_else(|| Problem::code(Code::Validation, "only PNG, JPEG, WebP or GIF"))?;
     let (width, height) = upload::dimensions(kind, &buf).unwrap_or((0, 0));
-    let (id, path) = upload::store(&state, kind, &buf).await?;
-    attachment::record(&state, site.id, id, &path, buf.len() as i32, width, height).await?;
+    let hash = blob::put(&state, kind.ext(), &buf).await?;
+    let id = Uuid::now_v7();
+    // 占位符按 id 认（同一张图可以贴两次，各自独立绑定）
+    attachment::record(&state, site.id, id, &hash, buf.len() as i32, width, height).await?;
 
-    let url = attachment::link(&state.cfg().public_base_url, &path);
+    let url = attachment::link(&state.cfg().public_base_url, &hash);
     Ok(Json(Stored {
         id,
         markdown: format!("![](ic-attachment:{id})"),
@@ -89,11 +94,13 @@ pub async fn media(
     Path(file): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response> {
-    let bytes = upload::read(&state, &file)
+    let hash = file.split('.').next().unwrap_or(&file);
+    let (bytes, content_type) = blob::get(&state, hash)
         .await
         .ok_or_else(|| Problem::code(Code::NotFound, "no such media"))?;
 
-    let etag = format!("\"{}\"", &file[..file.len().min(32)]);
+    // 内容不可变，etag 直接用哈希
+    let etag = format!("\"{hash}\"");
     if headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())
@@ -106,7 +113,7 @@ pub async fn media(
     }
 
     Response::builder()
-        .header(header::CONTENT_TYPE, upload::content_type(&file))
+        .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
         .header(header::ETAG, etag)
         .body(Body::from(bytes))
