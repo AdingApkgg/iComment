@@ -85,6 +85,8 @@ Akismet 兜底也可选：只填 `IC_AKISMET_KEY` 就生效，只对本地规则
 
 重试安全：`POST /api/v1/comments` 收 `Idempotency-Key` 头（或 body 里的 `idempotency_key`），重放返回同一行且 `created=false`。
 
+反应：`POST|DELETE /api/v1/comments/{id}/reactions/{kind}`，`kind` 取 `up|heart|haha|thinking|party`。匿名访客首次投票会拿到签名 `ic_voter` cookie，同一人对同一表情只计一次。
+
 无 JS 兜底：`/embed/<site_key>/<path>` 是服务端渲染的评论区，原生表单就能发；widget 拿不到元信息时也直接给这个链接。agent 可以先读 `/llms.txt` 与 `/install.md` 自己装。
 
 ## 开发约定

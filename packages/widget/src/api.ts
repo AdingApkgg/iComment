@@ -1,5 +1,12 @@
 /** 服务端已经过白名单裁剪，这里只做类型包装。 */
 
+export type ReactionKind = "up" | "heart" | "haha" | "thinking" | "party";
+
+export type ReactionTally = {
+  counts: Partial<Record<ReactionKind, number>>;
+  mine: ReactionKind[];
+};
+
 export type Comment = {
   id: string;
   parent_id: string | null;
@@ -11,6 +18,7 @@ export type Comment = {
   status: string;
   identity_unverified: boolean;
   created_at: string;
+  reactions: ReactionTally;
 };
 
 export type Page = {
@@ -92,6 +100,12 @@ export class Api {
     return this.call<Created>("/comments", {
       method: "POST",
       body: JSON.stringify({ path, ...payload }),
+    });
+  }
+
+  react(id: string, kind: ReactionKind, on: boolean) {
+    return this.call<ReactionTally>(`/comments/${id}/reactions/${kind}`, {
+      method: on ? "POST" : "DELETE",
     });
   }
 }

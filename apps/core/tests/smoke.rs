@@ -4,6 +4,7 @@ mod common;
 
 use axum::http::StatusCode;
 use icomment_core::antispam;
+use serde_json::json;
 
 use crate::common::{Harness, V1};
 
@@ -804,6 +805,145 @@ async fn akismet_outage_falls_back_to_local_rules() {
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["status"], "spam", "{body}");
+
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn reactions_count_once_per_voter() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+    let token = h.login("reactions.example@owner.example").await;
+    let (key, _) = h.create_site(&token, "reactions.example").await;
+    let created = h
+        .anon(
+            "/api/v1/comments",
+            &key,
+            json!({"path": "/r", "body_md": "hi"}),
+        )
+        .await;
+    let comment = &created.1;
+    assert_eq!(created.0, StatusCode::OK, "{comment}");
+    let id = comment["id"].as_str().expect("id");
+
+    // 同一个投票人连投两次只算一票
+    let first = h
+        .react(
+            &format!("/api/v1/comments/{id}/reactions/up"),
+            &key,
+            Some("v1"),
+        )
+        .await;
+    assert_eq!(first.0, StatusCode::OK);
+    let again = h
+        .react(
+            &format!("/api/v1/comments/{id}/reactions/up"),
+            &key,
+            Some("v1"),
+        )
+        .await;
+    assert_eq!(again.1["counts"]["up"], 1);
+    assert_eq!(again.1["mine"][0], "up");
+
+    let other = h
+        .react(
+            &format!("/api/v1/comments/{id}/reactions/heart"),
+            &key,
+            Some("v2"),
+        )
+        .await;
+    assert_eq!(other.1["counts"]["heart"], 1);
+    assert_eq!(other.1["counts"]["up"], 1);
+
+    // 列表里带上票数
+    let page = h.get_anon("/api/v1/comments?path=/r", &key).await.1;
+    assert_eq!(page["comments"][0]["reactions"]["counts"]["up"], 1);
+
+    // 撤票幂等
+    let (_, gone) = h
+        .unreact(
+            &format!("/api/v1/comments/{id}/reactions/up"),
+            &key,
+            Some("v1"),
+        )
+        .await;
+    assert!(gone["counts"].get("up").is_none());
+    let (_, gone_again) = h
+        .unreact(
+            &format!("/api/v1/comments/{id}/reactions/up"),
+            &key,
+            Some("v1"),
+        )
+        .await;
+    assert!(gone_again["mine"].as_array().expect("mine").is_empty());
+
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn reactions_reject_unknown_kind_and_need_a_voter() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+    let token = h.login("reaction-bad.example@owner.example").await;
+    let (key, _) = h.create_site(&token, "reaction-bad.example").await;
+    let created = h
+        .anon(
+            "/api/v1/comments",
+            &key,
+            json!({"path": "/r", "body_md": "hi"}),
+        )
+        .await;
+    let comment = &created.1;
+    assert_eq!(created.0, StatusCode::OK, "{comment}");
+    let id = comment["id"].as_str().expect("id");
+
+    let bad = h
+        .react(
+            &format!("/api/v1/comments/{id}/reactions/clap"),
+            &key,
+            Some("v1"),
+        )
+        .await;
+    assert_eq!(bad.0, StatusCode::BAD_REQUEST);
+    assert_eq!(bad.1["code"], "validation_failed");
+
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn anonymous_react_gets_a_signed_voter_cookie() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+    let token = h.login("reaction-anon.example@owner.example").await;
+    let (key, _) = h.create_site(&token, "reaction-anon.example").await;
+    let created = h
+        .anon(
+            "/api/v1/comments",
+            &key,
+            json!({"path": "/r", "body_md": "hi"}),
+        )
+        .await;
+    let comment = &created.1;
+    assert_eq!(created.0, StatusCode::OK, "{comment}");
+    let id = comment["id"].as_str().expect("id");
+
+    let (status, body) = h
+        .react(
+            &format!("/api/v1/comments/{id}/reactions/heart"),
+            &key,
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let cookie = body["_cookie"].as_str().expect("cookie");
+    assert!(cookie.starts_with("ic_voter="));
+    assert!(!cookie.contains("HttpOnly"));
 
     h.finish().await;
 }

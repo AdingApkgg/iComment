@@ -16,6 +16,15 @@ use crate::{
 
 pub const COMMENT_BURST: i64 = 3; // 每 60s
 pub const COMMENT_HOURLY: i64 = 24; // 每 3600s
+pub const REACTION_BURST: i64 = 30; // 每 60s，比发评论宽松得多
+
+/// 反应投票的限流键：站点 + IP。
+pub fn reaction_key(site: uuid::Uuid, ip: Option<std::net::IpAddr>) -> String {
+    match ip {
+        Some(ip) => format!("ic:rl:r:{site}:{ip}"),
+        None => format!("ic:rl:r:{site}:none"),
+    }
+}
 
 fn digest(parts: &[&str]) -> String {
     let mut hasher = Sha256::new();

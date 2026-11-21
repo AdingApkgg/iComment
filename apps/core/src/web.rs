@@ -30,6 +30,11 @@ fn sign(secret: &str, payload: &str) -> String {
     hex(&mac.finalize().into_bytes())
 }
 
+/// 给别的模块签一段明文（投票人 cookie 用）。
+pub fn sign_plain(state: &AppState, payload: &str) -> String {
+    sign(session_secret(state), payload)
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }

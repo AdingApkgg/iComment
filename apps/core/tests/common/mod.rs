@@ -323,6 +323,45 @@ impl Harness {
         )
     }
 
+    /// 带 `x-site-key` 的反应投票；`voter` 为空时服务端会发 cookie。
+    pub async fn react(
+        &self,
+        uri: &str,
+        key: &str,
+        voter: Option<&str>,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut headers = vec![("x-site-key", key)];
+        if let Some(voter) = voter {
+            headers.push(("x-ic-voter", voter));
+        }
+        let resp = self.raw("POST", uri, &headers, None).await;
+        let status = resp.status();
+        let cookie = resp
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let mut json = to_json(resp).await.1;
+        if let Some(cookie) = cookie {
+            json["_cookie"] = serde_json::Value::from(cookie);
+        }
+        (status, json)
+    }
+
+    pub async fn unreact(
+        &self,
+        uri: &str,
+        key: &str,
+        voter: Option<&str>,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut headers = vec![("x-site-key", key)];
+        if let Some(voter) = voter {
+            headers.push(("x-ic-voter", voter));
+        }
+        let resp = self.raw("DELETE", uri, &headers, None).await;
+        to_json(resp).await
+    }
+
     /// 改站点设置。
     pub async fn patch_site(
         &self,

@@ -1,9 +1,18 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
-import { Api, ApiError, type Comment, type SiteMeta } from "./api.js";
+import { Api, ApiError, type Comment, type ReactionKind, type SiteMeta } from "./api.js";
 
 const PAGE_SIZE_HINT = 40;
+
+/** 固定顺序，别跟服务端 enum 顺序脱节。 */
+const REACTIONS: ReadonlyArray<readonly [ReactionKind, string, string]> = [
+  ["up", "👍", "赞"],
+  ["heart", "❤️", "喜欢"],
+  ["haha", "😄", "好笑"],
+  ["thinking", "🤔", "想想"],
+  ["party", "🎉", "庆祝"],
+];
 
 /** 脚本自己的地址：以它推断 API 前缀，避免依赖 import.meta（要让普通 script 也能跑）。 */
 const SELF_SRC = (document.currentScript as HTMLScriptElement | null)?.src ?? "";
@@ -21,6 +30,8 @@ type View = {
   body: string;
   sending: boolean;
   notice: string | null;
+  /** 正在提交反应，防连点 */
+  reacting: string | null;
 };
 
 const blank = (): View => ({
@@ -36,6 +47,7 @@ const blank = (): View => ({
   body: "",
   sending: false,
   notice: null,
+  reacting: null,
 });
 
 /** 与核心的 CommentView 对齐；深度由客户端按 parent 链算，免得信服务端。 */
@@ -174,6 +186,29 @@ export class CommentWidget extends LitElement {
     }
     button[disabled] {
       opacity: 0.55;
+      cursor: progress;
+    }
+    .reacts {
+      display: flex;
+      gap: 0.3rem;
+      flex-wrap: wrap;
+      margin-top: 0.4rem;
+    }
+    .reacts button {
+      font-size: 0.8rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 99px;
+      border: 1px solid var(--ic-line);
+      background: none;
+      color: var(--ic-muted);
+      min-height: 1.8rem;
+    }
+    .reacts button[aria-pressed="true"] {
+      border-color: var(--ic-accent);
+      color: var(--ic-accent);
+      font-weight: 600;
+    }
+    .reacts button[disabled] {
       cursor: progress;
     }
     button.link {
@@ -412,6 +447,62 @@ export class CommentWidget extends LitElement {
     }
   }
 
+  /** 点一下切换：还没投就投，投过就撤；同一条一次只能挂一个请求。 */
+  private async react(comment: Comment, kind: ReactionKind): Promise<void> {
+    if (this._view.reacting || !this.api) return;
+    const on = !comment.reactions.mine.includes(kind);
+    this._view = { ...this._view, reacting: `${comment.id}:${kind}` };
+    try {
+      const tally = await this.api.react(comment.id, kind, on);
+      this._view = {
+        ...this._view,
+        reacting: null,
+        comments: this._view.comments.map((c) =>
+          c.id === comment.id ? { ...c, reactions: tally } : c,
+        ),
+      };
+    } catch (err) {
+      this._view = {
+        ...this._view,
+        reacting: null,
+        error: err instanceof ApiError ? err.message : "表情没投上，再试一次",
+      };
+    }
+  }
+
+  private reactions(comment: Comment): TemplateResult | typeof nothing {
+    const shown = REACTIONS.map(([kind, emoji, label]) => {
+      const n = comment.reactions.counts[kind] ?? 0;
+      const mine = comment.reactions.mine.includes(kind);
+      // 没人投又没投过的不占地方，除非已经有人投过同一评论的其它表情
+      if (!n && !mine) return nothing;
+      const busy = this._view.reacting === `${comment.id}:${kind}`;
+      return html`<button
+        type="button"
+        aria-pressed=${mine ? "true" : "false"}
+        aria-label=${`${label}，${n} 人`}
+        ?disabled=${busy}
+        @click=${() => this.react(comment, kind)}
+      >${emoji}${n ? html`<span class="count">${n}</span>` : nothing}</button>`;
+    });
+    const any = shown.some((item) => item !== nothing);
+    const picker = html`<details class="picker">
+      <summary class="link" aria-label="加个表情">＋</summary>
+      <div class="reacts">${REACTIONS.map(([kind, emoji, label]) => {
+        const n = comment.reactions.counts[kind] ?? 0;
+        const mine = comment.reactions.mine.includes(kind);
+        return html`<button
+          type="button"
+          aria-pressed=${mine ? "true" : "false"}
+          aria-label=${`${label}，${n} 人`}
+          @click=${() => this.react(comment, kind)}
+        >${emoji}${n ? html`<span class="count">${n}</span>` : nothing}</button>`;
+      })}</div>
+    </details>`;
+    if (!any) return picker;
+    return html`<div class="reacts">${shown}${picker}</div>`;
+  }
+
   private reply(target: Comment): void {
     this._view = { ...this._view, replyTo: target, error: null };
     this.renderRoot.querySelector("textarea")?.focus();
@@ -440,6 +531,7 @@ export class CommentWidget extends LitElement {
         <button class="link" type="button" @click=${() => this.reply(comment)}>回复</button>
       </div>
       <div class="body">${unsafe(comment.body_html)}</div>
+      ${this.reactions(comment)}
       ${badges.length ? html`<div class="badges">${badges.map((b) => html`<span class="badge">${b}</span>`)}</div>` : nothing}
       ${
         kids.length && depth < limit

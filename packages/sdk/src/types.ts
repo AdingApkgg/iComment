@@ -18,6 +18,16 @@ export type SiteCreated = Site & {
   embed_snippet: string;
 };
 
+/** 表情反应的固定键名，服务端只认这几个。 */
+export type ReactionKind = "up" | "heart" | "haha" | "thinking" | "party";
+
+export type ReactionTally = {
+  /** 没人投的键不出现 */
+  counts: Partial<Record<ReactionKind, number>>;
+  /** 当前投票人投过的 */
+  mine: ReactionKind[];
+};
+
 export type Comment = {
   id: string;
   thread_id: string;
@@ -31,6 +41,7 @@ export type Comment = {
   status: string;
   identity_unverified: boolean;
   created_at: string;
+  reactions: ReactionTally;
 };
 
 export type CommentPage = {

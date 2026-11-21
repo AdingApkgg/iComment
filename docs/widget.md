@@ -35,6 +35,10 @@ JS 未加载   → 若页面作者同时放 <noscript> 链接则可见（snippet
 - Turnstile token 在当前页面存活期内复用，失败重取。
 - 服务端是真理：提交后重新拉一页，`pending` 的条目自己带「待审」徽章，不做乐观插入（避免半条假数据）。
 
+## 反应
+
+五种固定表情（赞 / 喜欢 / 好笑 / 想想 / 庆祝），每人对每样只算一次，再点一次即撤。匿名访客拿到签名 `ic_voter` cookie 区分，不注册账号。没人投过的评论只显示一个「＋」选择器，投过才展开成按钮条；按钮用 `aria-pressed` 标出自己已投、`aria-label` 带数量。
+
 ## 无障碍
 
 `aria-live="polite"` 播报结果；三个输入都有 `label`（视觉隐藏的 `.sr` 文案）；列表带 `aria-busy`；`prefers-reduced-motion` 时关平滑滚动；对比度 ≥ 4.5:1。Lighthouse accessibility 100 由 `deploy/demo/index.html` 跑出，S2 前每次改样式复跑。

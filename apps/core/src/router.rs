@@ -24,7 +24,11 @@ pub fn build(state: AppState) -> Router {
             "/comments",
             get(api::public::list).post(api::public::create),
         )
-        .route("/comments/{id}", get(api::public::one));
+        .route("/comments/{id}", get(api::public::one))
+        .route(
+            "/comments/{id}/reactions/{kind}",
+            post(api::public::react).delete(api::public::unreact),
+        );
 
     let agent = Router::new()
         .route("/me", get(api::agent::me))

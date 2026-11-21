@@ -18,8 +18,10 @@ pub mod markdown;
 pub mod normalize;
 pub mod pages;
 pub mod ratelimit;
+pub mod reaction;
 pub mod router;
 pub mod state;
+pub mod voter;
 pub mod web;
 
 pub use state::AppState;

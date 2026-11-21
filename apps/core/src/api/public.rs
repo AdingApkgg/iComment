@@ -1,10 +1,9 @@
 //! 公开 API：widget 读取与写评论。鉴权靠 Origin，不需要 token。
 
-use axum::{
-    Json,
-    extract::{Path, Query, State},
-    http::HeaderMap,
-};
+use axum::Json;
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, header};
+use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -14,8 +13,9 @@ use crate::{
     domain::{comment, site, thread},
     error::{Code, Problem, Result},
     extract::{ClientIp, SiteOrigin},
-    identity, markdown,
+    identity, markdown, reaction,
     state::AppState,
+    voter,
 };
 
 #[derive(Debug, Deserialize)]
@@ -93,22 +93,113 @@ pub struct CommentView {
     pub status: String,
     pub identity_unverified: bool,
     pub created_at: DateTime<Utc>,
+    pub reactions: reaction::Tally,
 }
 
-impl From<comment::Comment> for CommentView {
-    fn from(c: comment::Comment) -> Self {
-        Self {
-            id: c.id,
-            parent_id: c.parent_id,
-            body_html: c.body_html,
-            author_kind: c.author_kind,
-            author_name: c.author_name,
-            author_avatar: c.author_avatar,
-            status: c.status,
-            identity_unverified: c.identity_unverified,
-            created_at: c.created_at,
-        }
+fn view(c: comment::Comment, reactions: reaction::Tally) -> CommentView {
+    CommentView {
+        id: c.id,
+        parent_id: c.parent_id,
+        body_html: c.body_html,
+        author_kind: c.author_kind,
+        author_name: c.author_name,
+        author_avatar: c.author_avatar,
+        status: c.status,
+        identity_unverified: c.identity_unverified,
+        created_at: c.created_at,
+        reactions,
     }
+}
+
+/// 一页评论的反应票数一次查完，避免 N+1。
+async fn views(
+    state: &AppState,
+    rows: Vec<comment::Comment>,
+    voter: Option<&str>,
+) -> Result<Vec<CommentView>> {
+    let ids: Vec<Uuid> = rows.iter().map(|c| c.id).collect();
+    let tallies = reaction::batch(state, &ids, voter).await?;
+    Ok(rows
+        .into_iter()
+        .map(|c| {
+            let tally = tallies.get(&c.id).cloned().unwrap_or_default();
+            view(c, tally)
+        })
+        .collect())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReactionPath {
+    pub id: Uuid,
+    pub kind: String,
+}
+
+/// 投票；`DELETE` 是撤票。可带 `?voter=` 覆盖 cookie 身份。
+#[axum::debug_handler]
+pub async fn react(
+    State(state): State<AppState>,
+    SiteOrigin(origin): SiteOrigin,
+    ClientIp(ip): ClientIp,
+    Path(ReactionPath { id, kind }): Path<ReactionPath>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let site = site::resolve(&state, &origin).await?;
+    antispam::hit(
+        &state,
+        &antispam::reaction_key(site.id, ip),
+        antispam::REACTION_BURST,
+        60,
+    )
+    .await?;
+    let voter = match headers
+        .get("x-ic-voter")
+        .and_then(|v| v.to_str().ok())
+        .map(voter::clean)
+    {
+        Some(Ok(v)) => (v, None),
+        Some(Err(e)) => return Err(e),
+        None => voter::resolve(&headers, &state),
+    };
+    let tally = reaction::add(&state, site.id, id, &kind, &voter.0).await?;
+    drop_cookie(tally, voter.1)
+}
+
+#[axum::debug_handler]
+pub async fn unreact(
+    State(state): State<AppState>,
+    SiteOrigin(origin): SiteOrigin,
+    ClientIp(ip): ClientIp,
+    Path(ReactionPath { id, kind }): Path<ReactionPath>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let site = site::resolve(&state, &origin).await?;
+    antispam::hit(
+        &state,
+        &antispam::reaction_key(site.id, ip),
+        antispam::REACTION_BURST,
+        60,
+    )
+    .await?;
+    let voter = match headers
+        .get("x-ic-voter")
+        .and_then(|v| v.to_str().ok())
+        .map(voter::clean)
+    {
+        Some(Ok(v)) => (v, None),
+        Some(Err(e)) => return Err(e),
+        None => voter::resolve(&headers, &state),
+    };
+    let tally = reaction::remove(&state, site.id, id, &kind, &voter.0).await?;
+    drop_cookie(tally, voter.1)
+}
+
+fn drop_cookie(tally: reaction::Tally, cookie: Option<String>) -> Result<Response> {
+    let mut res = Json(tally).into_response();
+    if let Some(cookie) = cookie {
+        res.headers_mut()
+            .insert(header::SET_COOKIE, cookie.parse().expect("ascii"));
+    }
+    Ok(res)
 }
 
 #[derive(Debug, Serialize)]
@@ -122,17 +213,26 @@ pub struct CommentPage {
 pub async fn list(
     State(state): State<AppState>,
     SiteOrigin(origin): SiteOrigin,
+    headers: HeaderMap,
     Query(q): Query<ListQuery>,
-) -> Result<Json<CommentPage>> {
+) -> Result<Response> {
     let site = site::resolve(&state, &origin).await?;
     // 拿到站点秘钥才能读 secret 列——这里不影响公开面
     let thread = thread::get_or_create(&state, site.id, &q.path, None).await?;
     let page = comment::page(&state, thread.id, true, q.cursor, q.limit).await?;
-    Ok(Json(CommentPage {
+    let (who, cookie) = voter::resolve(&headers, &state);
+    let listed = views(&state, page.comments, Some(&who)).await?;
+    let mut res = Json(CommentPage {
         total: thread.comment_count,
-        comments: page.comments.into_iter().map(Into::into).collect(),
+        comments: listed,
         next_cursor: page.next_cursor,
-    }))
+    })
+    .into_response();
+    if let Some(cookie) = cookie {
+        res.headers_mut()
+            .insert(header::SET_COOKIE, cookie.parse().expect("ascii"));
+    }
+    Ok(res)
 }
 
 #[derive(Debug, Deserialize)]
@@ -357,11 +457,14 @@ pub async fn one(
     State(state): State<AppState>,
     SiteOrigin(origin): SiteOrigin,
     Path(id): Path<Uuid>,
+    headers: HeaderMap,
 ) -> Result<Json<CommentView>> {
     let site = site::resolve(&state, &origin).await?;
     let comment = comment::by_id(&state, site.id, id).await?;
     if comment.status == "deleted" {
         return Err(Problem::code(Code::CommentNotFound, "comment deleted"));
     }
-    Ok(Json(comment.into()))
+    let (who, _) = voter::resolve(&headers, &state);
+    let tally = reaction::tally(&state, id, Some(&who)).await?;
+    Ok(Json(view(comment, tally)))
 }
