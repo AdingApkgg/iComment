@@ -1,0 +1,5 @@
+# 用宿主编好的镜像（scripts/build-image.sh 产出 icomment-core:prebuilt），
+# `up -d` 不再走容器内 cargo 编译；要重建就重跑那个脚本。
+services:
+  core:
+    image: icomment-core:prebuilt

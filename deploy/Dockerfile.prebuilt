@@ -1,0 +1,9 @@
+# 运行时镜像（不编译）：直接收宿主编好的二进制，省掉容器里的 cargo 下载与编译。
+# 构建上下文是只放了二进制的临时目录，由 scripts/build-image.sh 准备。
+FROM gcr.io/distroless/cc-debian12:nonroot
+COPY icomment-core /usr/local/bin/icomment-core
+
+WORKDIR /data
+ENV IC_PROFILE=prod IC_BIND=0.0.0.0:8080
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/icomment-core"]

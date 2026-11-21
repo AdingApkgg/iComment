@@ -95,6 +95,14 @@ impl FromRequestParts<AppState> for ClientIp {
 }
 
 pub fn client_ip(connect: &SocketAddr, headers: &header::HeaderMap) -> Option<IpAddr> {
+    // 过 Cloudflare 时边缘会写 cf-connecting-ip，客户端改不动它，比 XFF 可靠
+    if let Some(raw) = headers
+        .get("cf-connecting-ip")
+        .and_then(|v| v.to_str().ok())
+        && let Ok(ip) = raw.trim().parse::<IpAddr>()
+    {
+        return Some(ip);
+    }
     // 只在信任反代时看 XFF；取最后一跳之前的第一个
     if let Some(raw) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok())
         && let Some(first) = raw.split(',').next()

@@ -68,6 +68,8 @@ docker compose -f deploy/compose.yml --env-file deploy/.env up -d --build
 
 Caddy 自动签 HTTPS 并反代到核心；PG / Redis 只在 compose 内网可达，不对外暴露端口。镜像基于 distroless（约 55 MB，无 shell），健康检查走 `icomment-core health` 子命令。
 
+走 Cloudflare Tunnel（本机 80/443 被占用、或不想开端口）就叠 `-f deploy/compose.tunnel.yml`，Caddy 只听回环明文，TLS 由边缘终止——步骤见 [`docs/deploy.md`](docs/deploy.md)。线上部署是 `https://icomment.saop.cc`：`/` 落地页、`/dash` 控制台、`/api` 接口。
+
 证书：默认走 Let's Encrypt，需要域名已经解析到这台机器且 80/443 可达。内网或还没解析时叠加 `-f deploy/compose.local.yml`，改用自签证书。宿主 80/443 已被别的反代占用就设 `IC_HTTP_PORT` / `IC_HTTPS_PORT`。
 
 人机验证可选：填 `IC_TURNSTILE_SECRET` 与 `IC_TURNSTILE_SITE_KEY` 才生效，站点维度三态 `off / suspicious / always`，默认 `suspicious`（可疑才拦）。

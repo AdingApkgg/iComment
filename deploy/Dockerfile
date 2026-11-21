@@ -6,7 +6,9 @@ WORKDIR /src
 COPY package.json bun.lock biome.json turbo.json tsconfig.base.json ./
 COPY packages ./packages
 RUN bun install --frozen-lockfile
-RUN cd packages/widget && bun run build && cp dist/icomment.js /tmp/icomment.js
+# widget 的 build 脚本会顺手把产物拷进 apps/core/assets，这里没拷 apps，先给它个落脚处
+RUN mkdir -p /src/apps/core/assets && cd packages/widget && bun run build
+RUN cp packages/widget/dist/icomment.js /tmp/icomment.js
 
 FROM rust:1.94-bookworm AS build
 WORKDIR /src

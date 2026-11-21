@@ -1,0 +1,21 @@
+# Tunnel 部署用：Cloudflare 边缘已经终止 TLS，这里只回环监听明文 80，
+# 由 cloudflared 把 icomment.saop.cc 转进来；本机 80/443 被别的服务占着也不用管。
+# 用法见 docs/deploy.md。
+:80 {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	@widget path /widget/v1/*
+	header @widget >Cache-Control "public, max-age=3600"
+
+	@api path /api/*
+	header @api >Cache-Control "no-store"
+
+	reverse_proxy core:8080
+}

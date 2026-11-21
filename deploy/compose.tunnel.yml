@@ -1,0 +1,22 @@
+# 叠在 compose.yml 上，用 Cloudflare Tunnel 当边缘（TLS 在 CF 终止，回源走隧道内明文）：
+#   docker compose -f deploy/compose.yml -f deploy/compose.tunnel.yml \
+#     --env-file deploy/.env up -d --build
+# 然后按 docs/deploy.md 把 icomment.saop.cc 指到 127.0.0.1:18080。
+
+services:
+  # 本机 80/443 归别的服务，这个站的 Caddy 收起来不跑
+  caddy:
+    scale: 0
+
+  # 换成一个只听回环的明文边缘：保留 gzip、安全头、/widget/v1 长缓存、/api no-store
+  edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - core
+    ports:
+      - "127.0.0.1:${IC_TUNNEL_PORT:-18080}:80"
+    volumes:
+      - ./Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconf:/config
