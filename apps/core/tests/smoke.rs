@@ -641,8 +641,14 @@ async fn every_moderation_step_leaves_a_trace() {
     assert!(latest["excerpt"].as_str().unwrap_or("").contains("等一等"));
 
     // 站点主人页面上读得到
+    let cookie = h.login_web("trace@example.com").await;
     let page = h
-        .raw("GET", &format!("/dashboard/sites/{site}/audit"), &[], None)
+        .raw(
+            "GET",
+            &format!("/dashboard/sites/{site}/audit"),
+            &[("cookie", &cookie)],
+            None,
+        )
         .await;
     let (_, text) = crate::common::text(page).await;
     assert!(text.contains("审核留痕"), "{text}");

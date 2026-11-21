@@ -75,7 +75,7 @@ Caddy 自动签 HTTPS 并反代到核心；PG / Redis 只在 compose 内网可�
 | agent              | `/api/v1/agent`                        | `Authorization: Bearer tsa_…`（站点级或账号级） |
 | 设备授权           | `/api/v1/agent/device`、`/agent/token` | 无需                                            |
 | 控制台             | `/login`、`/dashboard`、`/sites`       | 签名 cookie                                     |
-| 审核留痕           | `/dashboard/sites/{id}/audit`          | 每次放行/隐藏/删除都记一条，可按评论回看         |
+| 审核留痕           | `/dashboard/sites/{id}/audit`          | 每次放行/隐藏/删除都记一条，可按评论回看        |
 
 错误统一 `application/problem+json`，带 `code`、`fields`，必要时 `next` 指引下一步；限流回 `Retry-After`。
 

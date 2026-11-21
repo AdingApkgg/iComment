@@ -169,6 +169,21 @@ impl Harness {
             .expect("send failed")
     }
 
+    /// 走登录表单拿会话 cookie。
+    pub async fn login_web(&self, email: &str) -> String {
+        let resp = self
+            .raw_form("POST", "/login", &format!("email={email}"))
+            .await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER, "login");
+        let raw = resp
+            .headers()
+            .get(header::SET_COOKIE)
+            .expect("set-cookie")
+            .to_str()
+            .expect("ascii");
+        raw.split(';').next().expect("pair").to_owned()
+    }
+
     /// 带 `x-site-key` 的匿名公开面调用。
     pub async fn anon(&self, uri: &str, key: &str, body: serde_json::Value) -> Json {
         let resp = self
