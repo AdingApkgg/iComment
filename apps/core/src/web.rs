@@ -193,6 +193,7 @@ pub async fn create_site(
             name: form.name,
             require_approval: None,
             challenge_mode: None,
+            blocked_domains: None,
         },
     )
     .await?;
@@ -334,6 +335,8 @@ pub async fn moderate(
 pub struct SettingsForm {
     pub require_approval: Option<String>,
     pub challenge_mode: Option<String>,
+    #[serde(default)]
+    pub blocked_domains: Option<String>,
 }
 
 pub async fn save_settings(
@@ -353,6 +356,13 @@ pub async fn save_settings(
             name: None,
             require_approval: Some(form.require_approval.as_deref() == Some("1")),
             challenge_mode: form.challenge_mode,
+            blocked_domains: form.blocked_domains.map(|raw| {
+                raw.split(['\n', ',', ' ', '\t', '\r'])
+                    .map(str::trim)
+                    .filter(|d| !d.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            }),
         },
     )
     .await?;
@@ -571,8 +581,12 @@ pub fn site_detail(
         <option value="off" {sel_off}>关</option>
       </select>
     </label>
+    <label class="check">域名黑名单
+      <input name="blocked_domains" value="{blocked}" placeholder="spam.example 每行一个">
+    </label>
     <button>保存</button>
   </form>
+  <p class="muted">黑名单命中即进垃圾箱，<code>example.com</code> 同时覆盖它的子域。</p>
   <p class="muted">{challenge_note}</p>
 </div>
 <div class="card"><h2>页面</h2><ul class="list">{thread_rows}</ul>
@@ -624,6 +638,7 @@ pub fn site_detail(
         } else {
             ""
         },
+        blocked = esc(&site.blocked_domains.join(" ")),
         challenge_note = if state.cfg().turnstile_required() {
             "Turnstile 已配置。"
         } else {

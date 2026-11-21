@@ -564,6 +564,53 @@ async fn daily_soft_cap_forces_review_but_keeps_accepting() {
 }
 
 #[tokio::test]
+async fn blocked_domain_lands_in_spam() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+
+    let token = h.login("blocked@example.com").await;
+    let (key, site) = h.create_site(&token, "blocked.example.com").await;
+    // 建站时就带上黑名单，子域应当一起管住
+    let (status, body) = h
+        .patch_site(
+            &token,
+            site,
+            serde_json::json!({ "blocked_domains": ["https://SEO-spam.example/", "seo-spam.example"] }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["blocked_domains"][0], "seo-spam.example");
+    assert_eq!(body["blocked_domains"].as_array().expect("list").len(), 1);
+
+    let (status, body) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/b", "body_md": "看这个 https://cdn.seo-spam.example/a", "author_name": "阿丁" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "spam", "{body}");
+
+    // 清空后不再拦截
+    h.patch_site(&token, site, serde_json::json!({ "blocked_domains": [] }))
+        .await;
+    let (status, body) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/b", "body_md": "又 https://cdn.seo-spam.example/a", "author_name": "阿丁" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "visible", "{body}");
+
+    h.finish().await;
+}
+
+#[tokio::test]
 async fn every_moderation_step_leaves_a_trace() {
     let Some(mut h) = Harness::start().await else {
         return;

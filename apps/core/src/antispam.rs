@@ -2,10 +2,11 @@
 //!
 //! 全部失败都映射成带行动指引的 problem，让 agent 能自己修。
 
-use std::net::IpAddr;
+use std::{net::IpAddr, sync::LazyLock};
 
 use chrono::Utc;
 use redis::AsyncCommands;
+use regex::Regex;
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -146,9 +147,40 @@ pub async fn verify_challenge(
     ))
 }
 
+static HOST: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"https?://(?:[^\s)>"']*@)?([^/\s)>"'?#]+)"#).unwrap());
+
+/// 正文里出现过的域名，已小写、去端口。
+pub fn link_hosts(body_md: &str) -> Vec<String> {
+    HOST.captures_iter(body_md)
+        .filter_map(|cap| cap.get(1))
+        .map(|host| {
+            host.as_str()
+                .rsplit_once(':')
+                .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
+                .map_or_else(|| host.as_str().to_owned(), |(h, _)| h.to_owned())
+                .trim_end_matches('.')
+                .to_lowercase()
+        })
+        .collect()
+}
+
+/// 命中的黑名单域名。`example.com` 同时管住 `cdn.example.com`。
+pub fn blocked_hit(hosts: &[String], blocked: &[String]) -> Option<String> {
+    hosts
+        .iter()
+        .find(|host| {
+            blocked
+                .iter()
+                .any(|b| host.as_str() == b || host.ends_with(&format!(".{b}")))
+        })
+        .cloned()
+}
+
 /// 内容启发式。返回 (是否 spam, 是否需人工)。
-pub fn sniff(body_md: &str, author_name: Option<&str>) -> (bool, bool) {
-    let links = body_md.matches("http://").count() + body_md.matches("https://").count();
+pub fn sniff(body_md: &str, author_name: Option<&str>, blocked: &[String]) -> (bool, bool) {
+    let hosts = link_hosts(body_md);
+    let links = hosts.len();
     let lower = body_md.to_lowercase();
 
     let spam_phrases = [
@@ -160,7 +192,8 @@ pub fn sniff(body_md: &str, author_name: Option<&str>) -> (bool, bool) {
     ];
     let phrase_hits = spam_phrases.iter().filter(|p| lower.contains(*p)).count();
 
-    let spam = links >= 4 || (links >= 2 && phrase_hits >= 1);
+    let spam =
+        blocked_hit(&hosts, blocked).is_some() || links >= 4 || (links >= 2 && phrase_hits >= 1);
     // 只对「短且没昵称」这种两头都弱的意见，才值得人工看一眼
     let unnamed = author_name.map(str::trim).unwrap_or("").is_empty();
     let needs_review = unnamed && body_md.chars().count() < 12;
@@ -173,20 +206,43 @@ mod tests {
 
     #[test]
     fn link_heavy_is_spam() {
-        let (spam, _) = sniff("a https://a b https://b c https://c d https://d", Some("x"));
+        let (spam, _) = sniff(
+            "a https://a b https://b c https://c d https://d",
+            Some("x"),
+            &[],
+        );
         assert!(spam);
     }
 
     #[test]
     fn plain_comment_is_clean() {
-        let (spam, review) = sniff("这个主题很不错，收藏了", Some("小明"));
+        let (spam, review) = sniff("这个主题很不错，收藏了", Some("小明"), &[]);
         assert!(!spam);
         assert!(!review);
     }
 
     #[test]
+    fn blocked_domain_is_spam() {
+        let (spam, _) = sniff(
+            "看 https://cdn.seo-spam.example 和 https://ok.example",
+            Some("x"),
+            &["seo-spam.example".to_owned()],
+        );
+        assert!(spam);
+    }
+
+    #[test]
+    fn blocked_domain_matches_subdomain_only() {
+        let hosts = link_hosts("a https://cdn.spam.example/x b https://notspam.example");
+        assert_eq!(
+            blocked_hit(&hosts, &["spam.example".to_owned()]),
+            Some("cdn.spam.example".to_owned())
+        );
+    }
+
+    #[test]
     fn short_without_name_needs_review() {
-        let (_, review) = sniff("+1", None);
+        let (_, review) = sniff("+1", None, &[]);
         assert!(review);
     }
 }

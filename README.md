@@ -69,13 +69,14 @@ Caddy 自动签 HTTPS 并反代到核心；PG / Redis 只在 compose 内网可�
 
 ## 接口速览
 
-| 面                 | 前缀                                   | 鉴权                                            |
-| ------------------ | -------------------------------------- | ----------------------------------------------- |
-| widget 公开读 / 写 | `/api/v1`                              | `x-site-key` 或 `Origin`                        |
-| agent              | `/api/v1/agent`                        | `Authorization: Bearer tsa_…`（站点级或账号级） |
-| 设备授权           | `/api/v1/agent/device`、`/agent/token` | 无需                                            |
-| 控制台             | `/login`、`/dashboard`、`/sites`       | 签名 cookie                                     |
-| 审核留痕           | `/dashboard/sites/{id}/audit`          | 每次放行/隐藏/删除都记一条，可按评论回看        |
+| 面                 | 前缀                                   | 鉴权                                             |
+| ------------------ | -------------------------------------- | ------------------------------------------------ |
+| widget 公开读 / 写 | `/api/v1`                              | `x-site-key` 或 `Origin`                         |
+| agent              | `/api/v1/agent`                        | `Authorization: Bearer tsa_…`（站点级或账号级）  |
+| 设备授权           | `/api/v1/agent/device`、`/agent/token` | 无需                                             |
+| 控制台             | `/login`、`/dashboard`、`/sites`       | 签名 cookie                                      |
+| 审核留痕           | `/dashboard/sites/{id}/audit`          | 每次放行/隐藏/删除都记一条，可按评论回看         |
+| 域名黑名单         | 站点设置面板 / `update_site`           | 命中即进垃圾箱，子域一并拦；关键词与链接数仍兜底 |
 
 错误统一 `application/problem+json`，带 `code`、`fields`，必要时 `next` 指引下一步；限流回 `Retry-After`。
 
@@ -96,7 +97,7 @@ bunx tsc -b packages/mcp          # sdk 走 project references，一起编译
 
 ### 冒烟测试
 
-`apps/core/tests/smoke.rs` 跑真实链路：设备授权 → 建站 → 发评论 → 审核 → 留痕回看 → 撤销。
+`apps/core/tests/smoke.rs` 跑真实链路：设备授权 → 建站 → 发评论 → 审核 → 留痕回看 → 黑名单拦截 → 撤销。
 它连真 PG 与 Redis，**每个用例自建 schema 并在结束时删掉**，靠这两个变量定位：
 
 ```bash

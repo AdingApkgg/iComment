@@ -21,7 +21,9 @@
 **3. 内容规则**
 
 - 链接数量（>3 转 pending）、最小长度、重复体（同 site+path 的 10 分钟内同文合并）。
-- 全站黑名单（邮箱域、IP 段）、Akismet 适配器（可选开关，不自建模型）。
+- 站点级域名黑名单（`site.blocked_domains`，最多 20 条，命中含子域即判 spam；`a.com` 同时覆盖 `cdn.a.com`）、Akismet 适配器（可选开关，不自建模型）。
+  - 由站点主人在设置面板或 `update_site` 维护，agent 可代填；传 `[]` 清空。
+  - 命中是**直接 spam 不发挑战**，所以要先确认对方确实只在链接里出现。
 - 存储前做一次 Honeypot 字段校验。
 
 ## signed identity（HMAC 透传）

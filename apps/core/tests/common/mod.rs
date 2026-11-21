@@ -312,4 +312,15 @@ impl Harness {
             body["id"].as_str().expect("id").parse().expect("uuid"),
         )
     }
+
+    /// 改站点设置。
+    pub async fn patch_site(
+        &self,
+        token: &str,
+        site_id: uuid::Uuid,
+        patch: serde_json::Value,
+    ) -> Json {
+        self.patch_auth(&format!("{V1}/agent/sites/{site_id}"), token, patch)
+            .await
+    }
 }

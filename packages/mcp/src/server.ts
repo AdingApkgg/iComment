@@ -122,22 +122,27 @@ export function buildServer(): McpServer {
       inputSchema: z.object({
         origin: z.string().describe("站点源，如 blog.example.com 或 https://blog.example.com"),
         name: z.string().optional(),
+        blocked_domains: z.array(z.string()).optional(),
         token: siteTokenSchema,
       }),
     },
-    wrap(async ({ origin, name, token }) => client(token).createSite({ origin, name })),
+    wrap(async ({ origin, name, blocked_domains, token }) =>
+      client(token).createSite({ origin, name, blocked_domains }),
+    ),
   );
 
   server.registerTool(
     "update_site",
     {
       title: "修改站点设置",
-      description: "改站点名、是否先审后发、人机验证策略",
+      description:
+        "改站点名、是否先审后发、人机验证策略、域名黑名单（命中即进垃圾箱，传空数组清空）",
       inputSchema: z.object({
         site_id: z.string(),
         name: z.string().optional(),
         require_approval: z.boolean().optional(),
         challenge_mode: z.enum(["off", "always", "suspicious"]).optional(),
+        blocked_domains: z.array(z.string()).optional(),
         token: siteTokenSchema,
       }),
     },

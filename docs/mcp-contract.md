@@ -28,7 +28,7 @@ agent 是主用户，所以开户、建站、验收都由它驱动，人只在�
 | `start_login` / `finish_login` | 设备授权两段（起流程 / 轮询到 token） | 中间必须停下等人 |
 | `whoami` | 当前账号与 token scope | |
 | `create_site` | 建站，返回 `site_key` + token + snippet | 同 origin 重复调用返回既有站点 |
-| `list_sites` / `update_site` | 列站点 / 改设置 | 站点 token 只能动自己 |
+| `list_sites` / `update_site` | 列站点 / 改设置（审核模式、域名黑名单） | 站点 token 只能动自己；`blocked_domains` 命中即进垃圾箱，传 `[]` 清空 |
 | `verify_install` | **服务端自己抓页面验收** | 见下 |
 | `list_threads` / `site_stats` | 按 path 列评论 / 看计数 | 游标分页 |
 | `audit_log` | 谁在何时放行、隐藏、删除了哪条（含失败理由） | `comment_id` 可选，只看单条历史 |

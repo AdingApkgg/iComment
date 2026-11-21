@@ -18,14 +18,15 @@ pub struct Site {
     pub name: Option<String>,
     pub require_approval: bool,
     pub challenge_mode: String,
+    pub blocked_domains: Vec<String>,
     pub widget_version: String,
     pub site_key: String,
     pub site_secret: String,
     pub created_at: DateTime<Utc>,
 }
 
-const COLS: &str = "id, origin, name, require_approval, challenge_mode, widget_version, site_key, \
-                    site_secret, created_at";
+const COLS: &str = "id, origin, name, require_approval, challenge_mode, blocked_domains, \
+                    widget_version, site_key, site_secret, created_at";
 
 fn random_key() -> String {
     use rand::RngCore;
@@ -41,7 +42,41 @@ pub struct CreateSite {
     pub name: Option<String>,
     pub require_approval: Option<bool>,
     pub challenge_mode: Option<String>,
+    pub blocked_domains: Option<Vec<String>>,
 }
+
+/// 归一化域名：小写、去协议与 www、去掉路径。返回空表示无效。
+pub fn clean_domain(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let with_scheme = if trimmed.contains("://") {
+        trimmed.to_owned()
+    } else {
+        format!("https://{trimmed}")
+    };
+    let host = normalize_origin(&with_scheme)?;
+    let host = host
+        .trim_start_matches("https://")
+        .trim_start_matches("www.")
+        .trim_end_matches('/')
+        .to_lowercase();
+    (!host.is_empty() && host.contains('.')).then_some(host)
+}
+
+/// 去重并丢弃无效项，最多 20 条。
+pub fn clean_domains(list: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for raw in list {
+        let Some(domain) = clean_domain(raw) else {
+            continue;
+        };
+        if out.len() < MAX_BLOCKED_DOMAINS && !out.contains(&domain) {
+            out.push(domain);
+        }
+    }
+    out
+}
+
+pub const MAX_BLOCKED_DOMAINS: usize = 20;
 
 /// 建站。origin 归一化后冲突返回 400。
 pub async fn create(state: &AppState, owner: Uuid, input: CreateSite) -> Result<Site> {
@@ -51,6 +86,11 @@ pub async fn create(state: &AppState, owner: Uuid, input: CreateSite) -> Result<
         .name
         .map(|n| n.trim().to_owned())
         .filter(|n| !n.is_empty());
+
+    let blocked_domains = input
+        .blocked_domains
+        .map(|list| clean_domains(&list))
+        .unwrap_or_default();
 
     let challenge_mode = match input.challenge_mode.as_deref() {
         Some(mode) if CHALLENGE_MODES.contains(&mode) => mode.to_owned(),
@@ -65,8 +105,9 @@ pub async fn create(state: &AppState, owner: Uuid, input: CreateSite) -> Result<
 
     let site: Option<Site> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "insert into site \
-           (id, owner_id, origin, name, site_key, site_secret, require_approval, challenge_mode) \
-         values ($1, $2, $3, $4, $5, $6, coalesce($7, true), $8) \
+           (id, owner_id, origin, name, site_key, site_secret, require_approval, challenge_mode, \
+            blocked_domains) \
+         values ($1, $2, $3, $4, $5, $6, coalesce($7, true), $8, $9) \
          on conflict (lower(origin)) where deleted_at is null do nothing \
          returning {COLS}"
     )))
@@ -78,6 +119,7 @@ pub async fn create(state: &AppState, owner: Uuid, input: CreateSite) -> Result<
     .bind(random_key())
     .bind(input.require_approval)
     .bind(&challenge_mode)
+    .bind(&blocked_domains)
     .fetch_optional(state.db())
     .await?;
 
@@ -132,6 +174,7 @@ pub struct SiteView {
     pub name: Option<String>,
     pub require_approval: bool,
     pub challenge_mode: String,
+    pub blocked_domains: Vec<String>,
     pub widget_version: String,
     pub site_key: String,
     /// HMAC 秘钥：只在 owner 视角出现，用来签 `X-IC-Identity`
@@ -141,8 +184,8 @@ pub struct SiteView {
 
 pub async fn view(state: &AppState, id: Uuid) -> Result<SiteView> {
     let view: Option<SiteView> = sqlx::query_as(
-        "select id, origin, name, require_approval, challenge_mode, widget_version, site_key, \
-         site_secret, created_at from site where id = $1 and deleted_at is null",
+        "select id, origin, name, require_approval, challenge_mode, blocked_domains, \
+         widget_version, site_key, site_secret, created_at from site where id = $1 and deleted_at is null",
     )
     .bind(id)
     .fetch_optional(state.db())
@@ -155,6 +198,7 @@ pub struct SiteUpdate {
     pub name: Option<String>,
     pub require_approval: Option<bool>,
     pub challenge_mode: Option<String>,
+    pub blocked_domains: Option<Vec<String>>,
 }
 
 pub async fn update(state: &AppState, id: Uuid, patch: SiteUpdate) -> Result<SiteView> {
@@ -181,7 +225,8 @@ pub async fn update(state: &AppState, id: Uuid, patch: SiteUpdate) -> Result<Sit
         "update site set \
          name = coalesce($2, name), \
          require_approval = coalesce($3, require_approval), \
-         challenge_mode = coalesce($4, challenge_mode) \
+         challenge_mode = coalesce($4, challenge_mode), \
+         blocked_domains = coalesce($5, blocked_domains) \
          where id = $1 and deleted_at is null",
     )
     .bind(id)
@@ -193,6 +238,7 @@ pub async fn update(state: &AppState, id: Uuid, patch: SiteUpdate) -> Result<Sit
     )
     .bind(patch.require_approval)
     .bind(patch.challenge_mode)
+    .bind(patch.blocked_domains.as_deref().map(clean_domains))
     .execute(state.db())
     .await?;
 

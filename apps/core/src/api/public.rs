@@ -231,7 +231,11 @@ pub async fn submit(
     let soft_capped = daily > antispam::DAILY_SOFT_CAP;
 
     let body_md = comment::validate_body(&input.body_md)?;
-    let (spam, needs_review) = antispam::sniff(&body_md, input.author_name.as_deref());
+    let (spam, needs_review) = antispam::sniff(
+        &body_md,
+        input.author_name.as_deref(),
+        &site.blocked_domains,
+    );
 
     // 宿主站透传的身份：验过就采信签名里的值（免审核、免挑战），没验过只当展示
     let identity = identity::read(site, headers);

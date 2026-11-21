@@ -20,12 +20,16 @@ import type {
 export type CreateSiteInput = {
   origin: string;
   name?: string | null;
+  /** 建站时就带上黑名单，省一次更新 */
+  blocked_domains?: string[];
 };
 
 export type UpdateSiteInput = {
   name?: string | null;
   require_approval?: boolean;
   challenge_mode?: "off" | "always" | "suspicious";
+  /** 域名黑名单，命中即进垃圾箱；传 `[]` 清空 */
+  blocked_domains?: string[];
 };
 
 export type CreateCommentInput = {
@@ -38,10 +42,6 @@ export type CreateCommentInput = {
 
 export class Client {
   constructor(private readonly transport: Transport) {}
-
-  private get base(): string {
-    return this.transport.base;
-  }
 
   me(): Promise<Me> {
     return request<Me>(this.transport, "GET", "/agent/me").then((r) => r.data);

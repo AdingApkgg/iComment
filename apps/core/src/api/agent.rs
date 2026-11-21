@@ -81,6 +81,9 @@ pub struct CreateSiteInput {
     pub require_approval: Option<bool>,
     #[serde(default)]
     pub challenge_mode: Option<String>,
+    /// 域名黑名单，命中即进垃圾箱；`example.com` 同时覆盖子域。
+    #[serde(default)]
+    pub blocked_domains: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -112,6 +115,7 @@ pub async fn create_site(
             name: input.name,
             require_approval: input.require_approval,
             challenge_mode: input.challenge_mode,
+            blocked_domains: input.blocked_domains,
         },
     )
     .await?;
@@ -185,6 +189,9 @@ pub struct SitePatch {
     pub require_approval: Option<bool>,
     #[serde(default)]
     pub challenge_mode: Option<String>,
+    /// 整表替换，传 `[]` 清空；`example.com` 同时覆盖子域。
+    #[serde(default)]
+    pub blocked_domains: Option<Vec<String>>,
 }
 
 pub async fn patch_site(
@@ -202,6 +209,7 @@ pub async fn patch_site(
                 name: patch.name,
                 require_approval: patch.require_approval,
                 challenge_mode: patch.challenge_mode,
+                blocked_domains: patch.blocked_domains,
             },
         )
         .await?,

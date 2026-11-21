@@ -6,6 +6,8 @@ export type Site = {
   name: string | null;
   require_approval: boolean;
   challenge_mode: string;
+  /** 命中即进垃圾箱的域名；父域同时覆盖子域 */
+  blocked_domains: string[];
   /** 公开的站点 key，嵌页时用；不是凭据 */
   site_key: string;
   created_at: string;
