@@ -47,6 +47,30 @@ cf dns records create -z saop.cc --body '{
 sleep 12 && curl -sS -o /dev/null -w '%{http_code}\n' https://icomment.saop.cc/
 ```
 
+## 登录与建站校验
+
+生产默认关掉邮箱直登（`IC_EMAIL_LOGIN` 默认 false），登录只能走 OAuth；建站必须先证明
+域名归属（`IC_CLAIM_VERIFY` 默认 true，prod 下设成 0 会直接拒绝启动）。
+
+```bash
+# deploy/.env
+# 回调地址固定为 https://<域名>/auth/{google,github}/callback
+IC_GOOGLE_CLIENT_ID=
+IC_GOOGLE_CLIENT_SECRET=
+IC_GITHUB_CLIENT_ID=
+IC_GITHUB_CLIENT_SECRET=
+```
+
+- Google：Cloud Console → 凭据 → OAuth 客户端 ID（Web 应用），授权重定向 URI 填
+  `https://icomment.saop.cc/auth/google/callback`。
+- GitHub：Settings → Developer settings → OAuth Apps，Authorization callback URL 填
+  `https://icomment.saop.cc/auth/github/callback`。
+- 两个都不填时 `/login` 会说「没有可用的登录方式」，此时临时设 `IC_EMAIL_LOGIN=1` 也能进，
+  但任何人都能用任意邮箱登录，只适合内网试跑。
+
+建站校验走 IndexNow 那套：申请后拿到 `https://<域名>/<32 位 hex>.txt`，内容就是那串 key，
+服务端 8 秒内回抓、最多 3 跳，内容必须完全一致；同一域名 24 小时内有效，最多试 10 次。
+
 ## 用宿主预编的二进制（慢网备选）
 
 `scripts/build-image.sh` 在宿主 `cargo build --release` 一次，再把二进制和宿主根证书塞进

@@ -15,8 +15,12 @@ pub fn build(state: AppState) -> Router {
         .route("/install.md", get(discover::install))
         .route("/login", get(web::login_page).post(web::login_submit))
         .route("/logout", get(web::logout))
+        .route("/auth/{provider}", get(web::oauth_start))
+        .route("/auth/{provider}/callback", get(web::oauth_callback))
         .route("/dash", get(web::dashboard))
         .route("/dash/sites", post(web::create_site))
+        .route("/dash/claims/{claim_id}", get(web::claim_page))
+        .route("/dash/claims/{claim_id}/verify", post(web::claim_verify))
         .route("/dash/sites/{site_id}", get(web::site_page))
         .route("/dash/sites/{site_id}/settings", post(web::save_settings))
         .route(

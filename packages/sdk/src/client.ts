@@ -6,6 +6,7 @@ import type {
   Comment,
   CommentPage,
   DeviceStart,
+  DomainClaim,
   Me,
   ModerateAction,
   SignedIdentity,
@@ -23,6 +24,11 @@ export type CreateSiteInput = {
   name?: string | null;
   /** 建站时就带上黑名单，省一次更新 */
   blocked_domains?: string[];
+  /**
+   * 服务端开启域名校验时必填：先 `startClaim` 拿到 key，
+   * 把 `/<key>.txt` 发布到域名根下，再把 key 带回来。
+   */
+  claim_key?: string;
 };
 
 export type UpdateSiteInput = {
@@ -76,6 +82,16 @@ export class Client {
   async listSites(): Promise<Site[]> {
     const { data } = await request<{ sites: Site[] }>(this.transport, "GET", "/agent/sites");
     return data.sites;
+  }
+
+  /**
+   * 申请域名归属校验。返回要发布的文件地址与内容；
+   * 发布后把 `claim_key` 一起传给 `createSite`。
+   */
+  startClaim(origin: string): Promise<DomainClaim> {
+    return request<DomainClaim>(this.transport, "POST", "/agent/sites/claim", { origin }).then(
+      (r) => r.data,
+    );
   }
 
   async createSite(input: CreateSiteInput): Promise<SiteCreated> {

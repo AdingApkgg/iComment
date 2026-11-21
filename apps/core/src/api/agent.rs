@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::{self, Agent, DeviceOutcome},
+    claim,
     domain::{account, comment, moderation, site, thread},
     error::{Code, Problem, Result},
     identity, markdown,
@@ -84,6 +85,9 @@ pub struct CreateSiteInput {
     /// 域名黑名单，命中即进垃圾箱；`example.com` 同时覆盖子域。
     #[serde(default)]
     pub blocked_domains: Option<Vec<String>>,
+    /// 生产环境必填：先把 `/<key>.txt` 放到域名根下，再带上申请到的 key。
+    #[serde(default)]
+    pub claim_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -107,18 +111,28 @@ pub async fn create_site(
         ));
     }
 
-    let site = site::create(
-        &state,
-        agent.account_id,
-        site::CreateSite {
-            origin: input.origin,
-            name: input.name,
-            require_approval: input.require_approval,
-            challenge_mode: input.challenge_mode,
-            blocked_domains: input.blocked_domains,
-        },
-    )
-    .await?;
+    let wants = site::CreateSite {
+        origin: input.origin.clone(),
+        name: input.name,
+        require_approval: input.require_approval,
+        challenge_mode: input.challenge_mode,
+        blocked_domains: input.blocked_domains,
+    };
+
+    let site = if state.cfg().claim_verify {
+        // 生产：域名必须已经用 key 文件证明过归属
+        let key = input.claim_key.as_deref().ok_or_else(|| {
+            Problem::field(
+                "claim_key",
+                "域名归属校验已开启：先 POST /api/v1/agent/sites/claim 拿 key，发布 <key>.txt 后再带上 claim_key 重试",
+            )
+        })?;
+        let claim = claim::by_key(&state, agent.account_id, &input.origin, key).await?;
+        let (_, site) = claim::verify(&state, agent.account_id, claim, wants).await?;
+        site
+    } else {
+        site::create(&state, agent.account_id, wants).await?
+    };
     let view = site::view(&state, site.id).await?;
     let site_token = auth::issue_site_token(state.db(), agent.account_id, site.id, "site").await?;
     let embed_snippet = embed_snippet(&state, &view.site_key);
@@ -127,6 +141,43 @@ pub async fn create_site(
         site: view,
         site_token,
         embed_snippet,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClaimInput {
+    pub origin: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClaimView {
+    /// 归一化后的 origin，后面建站用它
+    pub origin: String,
+    pub claim_key: String,
+    /// 把内容写到这里，然后带上 claim_key 重新 POST /sites
+    pub file_url: String,
+    pub file_content: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+pub async fn start_claim(
+    State(state): State<AppState>,
+    agent: Agent,
+    Json(input): Json<ClaimInput>,
+) -> Result<Json<ClaimView>> {
+    if agent.site_id.is_some() {
+        return Err(Problem::code(
+            Code::Forbidden,
+            "site-scoped token cannot claim domains",
+        ));
+    }
+    let claim = claim::start(&state, agent.account_id, &input.origin).await?;
+    Ok(Json(ClaimView {
+        origin: claim.origin.clone(),
+        file_url: claim.file_url(),
+        file_content: claim.claim_key.clone(),
+        claim_key: claim.claim_key,
+        expires_at: claim.expires_at,
     }))
 }
 

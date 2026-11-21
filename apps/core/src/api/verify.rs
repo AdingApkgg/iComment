@@ -305,7 +305,7 @@ fn build_hint(found: &Scan, site_key: &str, cdn: &str) -> String {
     parts.join("；")
 }
 
-async fn fetch(
+pub(crate) async fn fetch(
     state: &AppState,
     url: &reqwest::Url,
 ) -> std::result::Result<(u16, String), &'static str> {
@@ -341,7 +341,7 @@ async fn fetch(
 }
 
 /// 回环、私有网段、链路本地、`.local` 都当作抓不到。
-fn is_private(host: &str) -> bool {
+pub(crate) fn is_private(host: &str) -> bool {
     if host.eq_ignore_ascii_case("localhost") || host.ends_with(".local") {
         return true;
     }

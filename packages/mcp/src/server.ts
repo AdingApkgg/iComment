@@ -114,20 +114,38 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "claim_site",
+    {
+      title: "申请域名归属校验",
+      description:
+        "生产环境建站第一步：拿到要放到域名根目录的 key 文件地址与内容。发布后把 claim_key 传给 create_site",
+      inputSchema: z.object({
+        origin: z.string().describe("站点源，如 blog.example.com 或 https://blog.example.com"),
+        token: siteTokenSchema,
+      }),
+    },
+    wrap(async ({ origin, token }) => client(token).startClaim(origin)),
+  );
+
+  server.registerTool(
     "create_site",
     {
       title: "创建站点",
       description:
-        "注册一个新站点，返回 site_key、站点 token 和可直接粘贴的嵌入片段；贴完后用 verify_install 验收",
+        "注册一个新站点，返回 site_key、站点 token 和可直接粘贴的嵌入片段；贴完后用 verify_install 验收。生产环境要先 claim_site 并把 key 文件发布到域名根下，再带上 claim_key",
       inputSchema: z.object({
         origin: z.string().describe("站点源，如 blog.example.com 或 https://blog.example.com"),
         name: z.string().optional(),
         blocked_domains: z.array(z.string()).optional(),
+        claim_key: z
+          .string()
+          .optional()
+          .describe("claim_site 返回的 claim_key；服务端开启域名校验时必填"),
         token: siteTokenSchema,
       }),
     },
-    wrap(async ({ origin, name, blocked_domains, token }) =>
-      client(token).createSite({ origin, name, blocked_domains }),
+    wrap(async ({ origin, name, blocked_domains, claim_key, token }) =>
+      client(token).createSite({ origin, name, blocked_domains, claim_key }),
     ),
   );
 

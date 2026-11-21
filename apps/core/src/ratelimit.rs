@@ -18,6 +18,13 @@ pub struct Quota {
     pub window: Duration,
 }
 
+/// 建站前的域名归属校验：同一个域名每小时最多试 10 次。
+pub const CLAIM_PER_ORIGIN: Quota = Quota {
+    bucket: "claim",
+    limit: 10,
+    window: Duration::from_secs(3600),
+};
+
 pub const VERIFY_PER_SITE: Quota = Quota {
     bucket: "verify",
     limit: 30,

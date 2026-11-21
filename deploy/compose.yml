@@ -21,6 +21,15 @@ services:
       IC_TURNSTILE_SECRET: ${IC_TURNSTILE_SECRET:-}
       IC_TURNSTILE_SITE_KEY: ${IC_TURNSTILE_SITE_KEY:-}
       IC_SESSION_SECRET: ${IC_SESSION_SECRET}
+      # 登录：OAuth 两个都填才出现按钮；邮箱直登只在非 prod 默认开
+      IC_GOOGLE_CLIENT_ID: ${IC_GOOGLE_CLIENT_ID:-}
+      IC_GOOGLE_CLIENT_SECRET: ${IC_GOOGLE_CLIENT_SECRET:-}
+      IC_GITHUB_CLIENT_ID: ${IC_GITHUB_CLIENT_ID:-}
+      IC_GITHUB_CLIENT_SECRET: ${IC_GITHUB_CLIENT_SECRET:-}
+      IC_EMAIL_LOGIN: ${IC_EMAIL_LOGIN:-0}
+      # 建站前的域名归属校验，prod 默认开
+      IC_CLAIM_VERIFY: ${IC_CLAIM_VERIFY:-1}
+      IC_AKISMET_KEY: ${IC_AKISMET_KEY:-}
       # 附图存 SeaweedFS 的 filer；留空则退回容器内文件，重启即丢
       IC_SEAWEED_FILER_URL: http://seaweedfs:8888/uploads
     depends_on:

@@ -41,7 +41,9 @@ bun install
 cargo run -p icomment-core       # 迁移在启动时自动执行，打开 http://127.0.0.1:8080
 ```
 
-首次打开控制台注册账号，创建站点，页面会给出一段 `<script>` snippet，贴到主题里即可。
+首次打开控制台用 Google 或 GitHub 登录（本地开发可设 `IC_EMAIL_LOGIN=1` 直接用邮箱进），
+创建站点时会给出一个 `<key>.txt`：把它放到域名根目录，点验证，站点才算你的。
+验证通过后页面给出一段 `<script>` snippet，贴到主题里即可。
 
 ## 给 agent 装
 
@@ -49,7 +51,7 @@ cargo run -p icomment-core       # 迁移在启动时自动执行，打开 http:
 claude mcp add icomment -- npx -y @icomment/mcp   # 或本地：node packages/mcp/dist/main.js
 ```
 
-然后让它 `start_login`：终端给出四位码，在 Web 控制台 `/device` 输入一次。之后的 `create_site` 会把 snippet 一起返回，agent 自己贴进模板并跑 `verify_install` —— 服务端会真的去抓那一页，缺 `script` / `ic-comment` / `site-key` / `path` 哪一项就报哪一项，附可直接照做的提示。
+然后让它 `start_login`：终端给出四位码，在 Web 控制台 `/device` 输入一次。之后的 `claim_site` 拿域名校验 key、`create_site` 建站（把 snippet 一起返回），agent 自己贴进模板并跑 `verify_install` —— 服务端会真的去抓那一页，缺 `script` / `ic-comment` / `site-key` / `path` 哪一项就报哪一项，附可直接照做的提示。
 
 不想给 MCP 也一样，REST 就够：
 
@@ -78,16 +80,18 @@ Akismet 兜底也可选：只填 `IC_AKISMET_KEY` 就生效，只对本地规则
 
 ## 接口速览
 
-| 面                 | 前缀                                 | 鉴权                                             |
-| ------------------ | ------------------------------------ | ------------------------------------------------ |
-| widget 公开读 / 写 | `/api`                               | `x-site-key` 或 `Origin`                         |
-| agent              | `/api/agent`                         | `Authorization: Bearer tsa_…`（站点级或账号级）  |
-| 设备授权           | `/api/agent/device`、`/agent/token`  | 无需                                             |
-| 控制台             | `/login`、`/dash`、`/sites`          | 签名 cookie                                      |
-| 审核留痕           | `/dash/sites/{id}/audit`             | 每次放行/隐藏/删除都记一条，可按评论回看         |
-| 域名黑名单         | 站点设置面板 / `update_site`         | 命中即进垃圾箱，子域一并拦；关键词与链接数仍兜底 |
-| Akismet            | `IC_AKISMET_KEY`（可选）             | 本地放行后再问一次；超时或报错按本地结论走       |
-| 附图               | `POST /api/uploads`、`/media/{hash}` | 上传回占位符；内容寻址，`/media` 长缓存不可变    |
+| 面                 | 前缀                                 | 鉴权                                                                          |
+| ------------------ | ------------------------------------ | ----------------------------------------------------------------------------- |
+| widget 公开读 / 写 | `/api`                               | `x-site-key` 或 `Origin`                                                      |
+| agent              | `/api/agent`                         | `Authorization: Bearer tsa_…`（站点级或账号级）                               |
+| 设备授权           | `/api/agent/device`、`/agent/token`  | 无需                                                                          |
+| 控制台             | `/login`、`/dash`、`/sites`          | 签名 cookie                                                                   |
+| 审核留痕           | `/dash/sites/{id}/audit`             | 每次放行/隐藏/删除都记一条，可按评论回看                                      |
+| 域名黑名单         | 站点设置面板 / `update_site`         | 命中即进垃圾箱，子域一并拦；关键词与链接数仍兜底                              |
+| Akismet            | `IC_AKISMET_KEY`（可选）             | 本地放行后再问一次；超时或报错按本地结论走                                    |
+| 登录               | `/login`、`/auth/{provider}`         | Google / GitHub OAuth；`IC_EMAIL_LOGIN=1` 才开邮箱直登                        |
+| 域名归属           | `/api/agent/sites/claim`、控制台建站 | 域名根下放 `<key>.txt`，服务端回抓比对；`IC_CLAIM_VERIFY=0` 关（prod 不允许） |
+| 附图               | `POST /api/uploads`、`/media/{hash}` | 上传回占位符；内容寻址，`/media` 长缓存不可变                                 |
 
 错误统一 `application/problem+json`，带 `code`、`fields`，必要时 `next` 指引下一步；限流回 `Retry-After`。
 

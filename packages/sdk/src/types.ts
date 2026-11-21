@@ -127,3 +127,12 @@ export type SignedIdentity = {
   header: string;
   expires_in: number;
 };
+
+/** 域名归属校验：把 file_content 写到 file_url，再回传 claim_key。 */
+export type DomainClaim = {
+  origin: string;
+  claim_key: string;
+  file_url: string;
+  file_content: string;
+  expires_at: string;
+};

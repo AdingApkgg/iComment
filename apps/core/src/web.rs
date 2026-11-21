@@ -13,9 +13,10 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    api, auth,
+    api, auth, claim,
     domain::{account, comment, moderation, site, thread},
     error::{Code, Problem, Result},
+    oauth,
     state::AppState,
 };
 
@@ -97,17 +98,194 @@ impl axum::extract::FromRequestParts<AppState> for Session {
     }
 }
 
-pub async fn login_page() -> Html<String> {
-    Html(crate::web::render(
-        "登录",
+#[derive(Debug, Deserialize)]
+pub struct LoginQuery {
+    pub error: Option<String>,
+}
+
+pub async fn login_page(
+    State(state): State<AppState>,
+    Query(query): Query<LoginQuery>,
+) -> Html<String> {
+    let cfg = state.cfg();
+    let mut providers = String::new();
+    for provider in oauth::available(cfg) {
+        providers.push_str(&format!(
+            r#"<a class="button" href="/auth/{id}">用 {label} 登录</a>"#,
+            id = provider.as_str(),
+            label = provider.label()
+        ));
+    }
+    if providers.is_empty() && !cfg.email_login {
+        providers.push_str(
+            r#"<p class="error">没有可用的登录方式：管理员还没配 Google / GitHub OAuth。</p>"#,
+        );
+    }
+
+    let email_form = if cfg.email_login {
         r##"<form method="post" action="/login" class="card">
-  <h1>登录 iComment</h1>
-  <p class="muted">输入邮箱即可，登录链接不另外发。</p>
+  <h2>用邮箱进（开发用）</h2>
+  <p class="muted">生产环境关掉，它不验证邮箱归属。</p>
   <label>邮箱<input name="email" type="email" required autocomplete="email"></label>
   <button>进入</button>
-</form>"##,
+</form>"##
+    } else {
+        ""
+    };
+
+    let error = query
+        .error
+        .as_deref()
+        .map(|msg| format!(r#"<p class="error">{}</p>"#, esc(msg)))
+        .unwrap_or_default();
+
+    Html(crate::web::render(
+        "登录",
+        &format!(
+            r##"<div class="card">
+  <h1>登录 iComment</h1>
+  <p class="muted">账号只用来建站、审核和发令牌。评论者不需要登录。</p>
+  {error}
+  <div class="oauth">{providers}</div>
+</div>
+{email_form}"##
+        ),
         false,
     ))
+}
+
+/// 跳去第三方授权页；state 落在短命 cookie 里，回来要能对上。
+pub async fn oauth_start(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+) -> Result<Response> {
+    let provider = oauth::Provider::parse(&raw)
+        .ok_or_else(|| Problem::code(Code::NotFound, "unknown login provider"))?;
+    let redirect_uri = oauth::callback_uri(state.cfg(), provider);
+    let nonce = random_nonce();
+    let target = oauth::authorize_url(state.cfg(), provider, &redirect_uri, &nonce)?;
+
+    let mut res = Redirect::to(&target).into_response();
+    set_cookie(
+        &mut res,
+        format!(
+            "{}={nonce}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
+            oauth::STATE_COOKIE,
+            oauth::STATE_TTL_SECS,
+            secure_suffix(&state)
+        ),
+    );
+    Ok(res)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OAuthQuery {
+    pub code: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+    pub error_description: Option<String>,
+}
+
+pub async fn oauth_callback(
+    State(state): State<AppState>,
+    Path(raw): Path<String>,
+    Query(query): Query<OAuthQuery>,
+    headers: HeaderMap,
+) -> Result<Response> {
+    let provider = oauth::Provider::parse(&raw)
+        .ok_or_else(|| Problem::code(Code::NotFound, "unknown login provider"))?;
+
+    let result = finish_login(&state, provider, &query, &headers).await;
+    let mut res = match result {
+        Ok(account) => {
+            let mut res = Redirect::to("/dash").into_response();
+            set_cookie(&mut res, issue_cookie(&state, account.id));
+            res
+        }
+        Err(problem) => Redirect::to(&login_error_target(&problem)).into_response(),
+    };
+    // 不管成没成，state cookie 都作废
+    set_cookie(
+        &mut res,
+        format!("{}=; Path=/; Max-Age=0", oauth::STATE_COOKIE),
+    );
+    Ok(res)
+}
+
+async fn finish_login(
+    state: &AppState,
+    provider: oauth::Provider,
+    query: &OAuthQuery,
+    headers: &HeaderMap,
+) -> Result<account::Account> {
+    if let Some(err) = &query.error {
+        let detail = query
+            .error_description
+            .as_deref()
+            .filter(|d| !d.is_empty())
+            .unwrap_or(err);
+        return Err(Problem::field("oauth", format!("{err}: {detail}")));
+    }
+
+    let expected = cookie_value(headers, oauth::STATE_COOKIE)
+        .ok_or_else(|| Problem::field("state", "登录已过期或不是这个浏览器发起的，请重试"))?;
+    if query.state.as_deref() != Some(expected.as_str()) {
+        return Err(Problem::field("state", "state 不匹配，请重试"));
+    }
+
+    let code = query
+        .code
+        .as_deref()
+        .filter(|c| !c.is_empty())
+        .ok_or_else(|| Problem::field("code", "授权回调没带 code"))?;
+
+    let redirect_uri = oauth::callback_uri(state.cfg(), provider);
+    let profile = oauth::exchange_and_profile(state, provider, code, &redirect_uri).await?;
+    account::login_with_identity(state, provider.as_str(), &profile.subject, &profile.email).await
+}
+
+fn login_error_target(problem: &Problem) -> String {
+    let mut url = reqwest::Url::parse("https://login.local/login").expect("static url");
+    url.query_pairs_mut()
+        .append_pair("error", &problem.to_string());
+    let mut out = url.path().to_owned();
+    if let Some(q) = url.query() {
+        out.push('?');
+        out.push_str(q);
+    }
+    out
+}
+
+fn random_nonce() -> String {
+    use rand::RngCore;
+    let mut buf = [0u8; 16];
+    rand::rng().fill_bytes(&mut buf);
+    buf.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn secure_suffix(state: &AppState) -> &'static str {
+    if state.cfg().public_base_url.starts_with("https") {
+        "; Secure"
+    } else {
+        ""
+    }
+}
+
+fn set_cookie(res: &mut Response, value: String) {
+    if let Ok(parsed) = value.parse() {
+        res.headers_mut().insert(header::SET_COOKIE, parsed);
+    }
+}
+
+fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(header::COOKIE)?
+        .to_str()
+        .ok()?
+        .split(';')
+        .map(str::trim)
+        .find_map(|pair| pair.strip_prefix(&format!("{name}=")))
+        .map(str::to_owned)
 }
 
 /// 落地页：/ 就是这一页，讲清楚这是什么、怎么装、往哪进后台。
@@ -177,6 +355,12 @@ pub async fn login_submit(
     State(state): State<AppState>,
     Form(form): Form<LoginForm>,
 ) -> Result<Response> {
+    if !state.cfg().email_login {
+        return Err(Problem::field(
+            "email",
+            "邮箱登录已关闭，请用 Google 或 GitHub 登录",
+        ));
+    }
     let account = account::ensure(&state, &form.email).await?;
     let cookie = issue_cookie(&state, account.id);
     let mut res = Redirect::to("/dash").into_response();
@@ -243,17 +427,94 @@ pub struct NewSiteForm {
     pub name: Option<String>,
 }
 
+/// 建站第一步：开一个域名归属申请，去放 key 文件。
 pub async fn create_site(
     State(state): State<AppState>,
     Session(account): Session,
     Form(form): Form<NewSiteForm>,
 ) -> Result<Response> {
+    if state.cfg().claim_verify {
+        let claim = claim::start(&state, account.id, &form.origin).await?;
+        return Ok(Redirect::to(&format!("/dash/claims/{}", claim.id)).into_response());
+    }
     let site = site::create(
         &state,
         account.id,
         site::CreateSite {
             origin: form.origin,
             name: form.name,
+            require_approval: None,
+            challenge_mode: None,
+            blocked_domains: None,
+        },
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/dash/sites/{}", site.id)).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClaimForm {
+    pub name: Option<String>,
+}
+
+/// 放文件的说明页：key、文件地址、验证按钮。
+pub async fn claim_page(
+    State(state): State<AppState>,
+    Session(account): Session,
+    Path(claim_id): Path<Uuid>,
+) -> Result<Html<String>> {
+    let claim = claim::by_id(&state, account.id, claim_id).await?;
+    let file_url = claim.file_url();
+    let host = reqwest::Url::parse(&claim.origin)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_else(|| claim.origin.clone());
+    let expired = if claim.expired() {
+        r#"<p class="error">这条申请已过期，回控制台重新申请一个。</p>"#
+    } else {
+        ""
+    };
+
+    Ok(Html(crate::web::render(
+        "验证域名",
+        &format!(
+            r##"<div class="card">
+  <h1>证明 {origin} 是你的</h1>
+  <p class="muted">把下面这个文件放到站点根目录，能被公网匿名访问（不要登录、不要跳转），
+  然后点验证。文件内容只有一行 key。</p>
+  {expired}
+  <p><code>{file_url}</code></p>
+  <p>内容：<code>{key}</code></p>
+  <p class="muted">也可以用 nginx 直接给：<code>location = /{key}.txt {{ default_type text/plain; return 200 "{key}"; }}</code></p>
+  <form method="post" action="/dash/claims/{id}/verify">
+    <label>显示名（可选）<input name="name" value="{host}" maxlength="64"></label>
+    <button>验证并建站</button>
+  </form>
+</div>"##,
+            origin = esc(&claim.origin),
+            file_url = esc(&file_url),
+            key = esc(&claim.claim_key),
+            host = esc(&host),
+            id = claim.id,
+        ),
+        true,
+    )))
+}
+
+pub async fn claim_verify(
+    State(state): State<AppState>,
+    Session(account): Session,
+    Path(claim_id): Path<Uuid>,
+    Form(form): Form<ClaimForm>,
+) -> Result<Response> {
+    let claim = claim::by_id(&state, account.id, claim_id).await?;
+    let (_, site) = claim::verify(
+        &state,
+        account.id,
+        claim,
+        site::CreateSite {
+            origin: String::new(),
+            name: form.name.filter(|n| !n.trim().is_empty()),
             require_approval: None,
             challenge_mode: None,
             blocked_domains: None,

@@ -28,8 +28,9 @@ pub async fn llms(state: State<AppState>) -> Response {
 
 1. `POST {base}/api/agent/device` 拿设备码，把 `verification_uri_complete` 交给站点主人在浏览器里确认
 2. 轮询 `POST {base}/api/agent/token` 直到拿到以 `tsa_` 开头的 token
-3. `POST {base}/api/agent/sites` 建站，响应里的 `embed_snippet` 原样贴进 HTML
-4. `POST {base}/api/agent/sites/<site_id>/verify` 校验装好了没
+3. `POST {base}/api/agent/sites/claim` 申请域名归属校验，把返回的 `file_content` 发布到 `file_url`（域名根下的 `<key>.txt`）
+4. `POST {base}/api/agent/sites` 建站（带上 `claim_key`），响应里的 `embed_snippet` 原样贴进 HTML
+5. `POST {base}/api/agent/sites/<site_id>/verify` 校验装好了没
 
 账号级 token 可管所有站；每个站另有站点级 token，只够读写自己。
 "#
@@ -42,7 +43,7 @@ pub async fn install(state: State<AppState>) -> Response {
     let body = format!(
         r#"# 安装 iComment
 
-三件事：拿 token、建站、贴脚本。
+四件事：拿 token、证明域名归属、建站、贴脚本。
 
 ## 1. 拿 token
 
@@ -60,25 +61,39 @@ curl -s {base}/api/agent/token -X POST \
 
 拿到的 `token` 存好，别贴进前端。
 
-## 2. 建站
+## 2. 证明域名归属
+
+生产环境建站前要先证明域名是你的：申请一个 key，把文件放到域名根下，服务端会回抓比对。
 
 ```sh
-curl -s {base}/api/agent/sites -X POST \
+curl -s {base}/api/agent/sites/claim -X POST \
   -H 'authorization: Bearer <token>' \
   -H 'content-type: application/json' \
   -d '{{"origin":"https://example.com"}}'
 ```
 
+响应里的 `file_url` 形如 `https://example.com/<key>.txt`，`file_content` 就是那个 key。
+把文件发上去（内容只有一行 key，匿名可读、不跳转），再进下一步。
+
+## 3. 建站
+
+```sh
+curl -s {base}/api/agent/sites -X POST \
+  -H 'authorization: Bearer <token>' \
+  -H 'content-type: application/json' \
+  -d '{{"origin":"https://example.com","claim_key":"<上一步的 claim_key>"}}'
+```
+
 响应里两样东西：`site_key`（公开，写进脚本）和 `embed_snippet`（原样贴进页面）。`site_token` 只够读写本站，适合给 CI 或子 agent。
 
-## 3. 贴脚本
+## 4. 贴脚本
 
 ```html
 <div id="comments"></div>
 <script src="{base}/widget/v1/icomment.js" data-site-key="<site_key>" defer></script>
 ```
 
-## 4. 校验
+## 5. 校验
 
 ```sh
 curl -s {base}/api/verify -X POST \

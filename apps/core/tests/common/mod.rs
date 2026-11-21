@@ -2,6 +2,9 @@
 //!
 //! 依赖由 `IC_TEST_DATABASE_URL` / `IC_TEST_REDIS_URL` 提供，缺一个就整体跳过。
 
+// 每个测试二进制各编一份，用不到的辅助函数不算问题
+#![allow(dead_code)]
+
 use std::cell::Cell;
 
 use axum::{
@@ -116,6 +119,12 @@ impl Harness {
             upload_dir: tmp_upload_dir(),
             // 有 filer 就测真后端，否则落临时目录
             seaweed_filer_url: env("IC_TEST_SEAWEED_URL"),
+            // 测试里没有真 OAuth 应用；邮箱登录留着，旧用例还在用
+            google: None,
+            github: None,
+            email_login: true,
+            // 域名校验要真抓 https，单测里关掉；逻辑由 claim 模块的单测覆盖
+            claim_verify: false,
         };
         tweak(&mut cfg);
 
