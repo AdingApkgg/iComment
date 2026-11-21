@@ -175,7 +175,7 @@ impl IntoResponse for Problem {
                     Code::Internal
                 };
                 tracing::warn!(error = %format!("{e:#}"), "internal error");
-                (code, "internal error".to_owned(), None)
+                (code, format!("internal error: {e:#}"), None)
             }
         };
 

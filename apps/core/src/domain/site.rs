@@ -260,11 +260,9 @@ pub async fn soft_delete(state: &AppState, id: Uuid) -> Result<()> {
 
 /// 站点列表（账号级 token 用）。
 pub async fn list_for_owner(state: &AppState, owner: Uuid) -> Result<Vec<SiteView>> {
-    let rows: Vec<SiteView> = sqlx::query_as(
-        "select id, origin, name, require_approval, challenge_mode, widget_version, site_key, \
-         site_secret, created_at from site where owner_id = $1 and deleted_at is null \
-         order by created_at",
-    )
+    let rows: Vec<SiteView> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "select {COLS} from site where owner_id = $1 and deleted_at is null order by created_at"
+    )))
     .bind(owner)
     .fetch_all(state.db())
     .await?;
