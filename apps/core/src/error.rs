@@ -118,6 +118,19 @@ impl Problem {
     pub fn upstream(err: impl Into<anyhow::Error>) -> Self {
         Self::Inner(err.into())
     }
+
+    /// 给人看的一句话：不带错误码前缀，字段错误只取原因。
+    pub fn detail(&self) -> String {
+        match self {
+            Self::Code(_, detail) => detail.to_string(),
+            Self::Fields(fields) => fields
+                .iter()
+                .map(|(_, reason)| reason.as_str())
+                .collect::<Vec<_>>()
+                .join("；"),
+            Self::Inner(err) => err.to_string(),
+        }
+    }
 }
 
 impl From<anyhow::Error> for Problem {

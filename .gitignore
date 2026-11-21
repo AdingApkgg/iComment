@@ -33,3 +33,4 @@ var/uploads/
 # 日志
 *.log
 npm-debug.log*
+.shots/

@@ -362,4 +362,12 @@ code {
   border-radius: 5px;
   background: var(--bg);
   border: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
 }

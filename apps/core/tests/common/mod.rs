@@ -337,6 +337,31 @@ impl Harness {
             .expect("send failed")
     }
 
+    /// 带会话 cookie 的原生表单提交。
+    pub async fn raw_form_with_cookie(
+        &self,
+        method: &str,
+        uri: &str,
+        form: &str,
+        cookie: &str,
+    ) -> Response {
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .header(header::COOKIE, cookie)
+            .header("x-forwarded-for", self.ip.take().clone())
+            .header(header::CONTENT_LENGTH, form.len())
+            .body(Body::from(form.to_owned()))
+            .expect("valid request");
+        self.ip.set(self.ip.take());
+        self.app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("send failed")
+    }
+
     /// 走完设备授权（直接调 domain，跳过网页表单），返回账号级 token。
     pub async fn login(&self, email: &str) -> String {
         let account = account::ensure(&self.state, email).await.expect("account");

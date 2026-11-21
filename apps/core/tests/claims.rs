@@ -214,3 +214,58 @@ async fn oauth_start_sets_a_state_cookie_and_redirects() {
     assert!(cookie.starts_with("ic_oauth="), "{cookie}");
     assert!(cookie.contains("HttpOnly"));
 }
+
+#[tokio::test]
+async fn web_claim_failures_come_back_as_a_page_not_json() {
+    let Some(mut h) = Harness::start_with(|cfg| {
+        cfg.claim_verify = true;
+        cfg.verify_private = false;
+    })
+    .await
+    else {
+        return;
+    };
+    h.unique_ip();
+
+    let cookie = h.login_web("webclaim@example.com").await;
+
+    // 建站第一步只发申请，不发 site
+    let resp = h
+        .raw_form_with_cookie("POST", "/dash/sites", "origin=localhost", &cookie)
+        .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let claim_path = resp
+        .headers()
+        .get(axum::http::header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    assert!(claim_path.starts_with("/dash/claims/"), "{claim_path}");
+
+    // 内网域名在测试里直接判失败，不发网络请求
+    let resp = h
+        .raw_form_with_cookie(
+            "POST",
+            &format!("{claim_path}/verify"),
+            "name=Local",
+            &cookie,
+        )
+        .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let location = resp
+        .headers()
+        .get(axum::http::header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    assert!(
+        location.starts_with(&format!("{claim_path}?error=")),
+        "{location}"
+    );
+
+    // 页面把原因直接摊开，不再吐 JSON
+    let (status, body) = text(h.raw("GET", &location, &[("cookie", &cookie)], None).await).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("内网域名"), "{body}");
+    assert!(body.contains("class=\"error\""), "{body}");
+}

@@ -245,9 +245,15 @@ async fn finish_login(
 }
 
 fn login_error_target(problem: &Problem) -> String {
-    let mut url = reqwest::Url::parse("https://login.local/login").expect("static url");
+    error_target("/login", problem)
+}
+
+/// 表单出错时回到原页面带上原因，而不是给浏览器吐一坨 JSON。
+fn error_target(path: &str, problem: &Problem) -> String {
+    let mut url = reqwest::Url::parse("https://redirect.local").expect("static url");
+    url.set_path(path);
     url.query_pairs_mut()
-        .append_pair("error", &problem.to_string());
+        .append_pair("error", &problem.detail());
     let mut out = url.path().to_owned();
     if let Some(q) = url.query() {
         out.push('?');
@@ -383,6 +389,7 @@ pub async fn logout() -> Response {
 pub async fn dashboard(
     State(state): State<AppState>,
     Session(account): Session,
+    Query(query): Query<LoginQuery>,
 ) -> Result<Html<String>> {
     let sites = site::list_for_owner(&state, account.id).await?;
     let mut rows = String::new();
@@ -408,6 +415,7 @@ pub async fn dashboard(
         &format!(
             r##"<div class="card">
   <div class="row"><h1>我的站点</h1><a href="/logout">退出</a></div>
+  {error}
   <ul class="list">{rows}</ul>
 </div>
 <form method="post" action="/dash/sites" class="card">
@@ -415,7 +423,12 @@ pub async fn dashboard(
   <label>站点 origin<input name="origin" placeholder="example.com" required></label>
   <label>显示名（可选）<input name="name"></label>
   <button>创建</button>
-</form>"##
+</form>"##,
+            error = query
+                .error
+                .as_deref()
+                .map(|e| format!(r#"<p class="error">{}</p>"#, esc(e)))
+                .unwrap_or_default(),
         ),
         true,
     )))
@@ -434,8 +447,10 @@ pub async fn create_site(
     Form(form): Form<NewSiteForm>,
 ) -> Result<Response> {
     if state.cfg().claim_verify {
-        let claim = claim::start(&state, account.id, &form.origin).await?;
-        return Ok(Redirect::to(&format!("/dash/claims/{}", claim.id)).into_response());
+        return match claim::start(&state, account.id, &form.origin).await {
+            Ok(claim) => Ok(Redirect::to(&format!("/dash/claims/{}", claim.id)).into_response()),
+            Err(problem) => Ok(Redirect::to(&error_target("/dash", &problem)).into_response()),
+        };
     }
     let site = site::create(
         &state,
@@ -462,8 +477,14 @@ pub async fn claim_page(
     State(state): State<AppState>,
     Session(account): Session,
     Path(claim_id): Path<Uuid>,
+    Query(query): Query<LoginQuery>,
 ) -> Result<Html<String>> {
     let claim = claim::by_id(&state, account.id, claim_id).await?;
+    let error = query
+        .error
+        .as_deref()
+        .map(|e| format!(r#"<p class="error">{}</p>"#, esc(e)))
+        .unwrap_or_default();
     let file_url = claim.file_url();
     let host = reqwest::Url::parse(&claim.origin)
         .ok()
@@ -483,15 +504,18 @@ pub async fn claim_page(
   <p class="muted">把下面这个文件放到站点根目录，能被公网匿名访问（不要登录、不要跳转），
   然后点验证。文件内容只有一行 key。</p>
   {expired}
+  {error}
   <p><code>{file_url}</code></p>
   <p>内容：<code>{key}</code></p>
-  <p class="muted">也可以用 nginx 直接给：<code>location = /{key}.txt {{ default_type text/plain; return 200 "{key}"; }}</code></p>
+  <p class="muted">也可以用 nginx 直接给：</p>
+  <pre><code>location = /{key}.txt {{ default_type text/plain; return 200 "{key}"; }}</code></pre>
   <form method="post" action="/dash/claims/{id}/verify">
     <label>显示名（可选）<input name="name" value="{host}" maxlength="64"></label>
     <button>验证并建站</button>
   </form>
 </div>"##,
             origin = esc(&claim.origin),
+            error = error,
             file_url = esc(&file_url),
             key = esc(&claim.claim_key),
             host = esc(&host),
@@ -508,7 +532,7 @@ pub async fn claim_verify(
     Form(form): Form<ClaimForm>,
 ) -> Result<Response> {
     let claim = claim::by_id(&state, account.id, claim_id).await?;
-    let (_, site) = claim::verify(
+    let verified = claim::verify(
         &state,
         account.id,
         claim,
@@ -520,8 +544,15 @@ pub async fn claim_verify(
             blocked_domains: None,
         },
     )
-    .await?;
-    Ok(Redirect::to(&format!("/dash/sites/{}", site.id)).into_response())
+    .await;
+    match verified {
+        Ok((_, site)) => Ok(Redirect::to(&format!("/dash/sites/{}", site.id)).into_response()),
+        Err(problem) => Ok(Redirect::to(&error_target(
+            &format!("/dash/claims/{claim_id}"),
+            &problem,
+        ))
+        .into_response()),
+    }
 }
 
 struct SiteDetail {
