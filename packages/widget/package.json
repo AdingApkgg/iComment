@@ -26,7 +26,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.json --emitDeclarationOnly",
+    "build": "vite build && tsc -p tsconfig.json --emitDeclarationOnly && cp dist/icomment.js ../../apps/core/assets/icomment.js",
     "dev": "vite build --watch",
     "typecheck": "tsc --noEmit"
   },

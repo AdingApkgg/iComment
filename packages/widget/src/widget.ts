@@ -471,11 +471,9 @@ export class CommentWidget extends LitElement {
   }
 
   private reactions(comment: Comment): TemplateResult | typeof nothing {
-    const shown = REACTIONS.map(([kind, emoji, label]) => {
+    const button = ([kind, emoji, label]: readonly [ReactionKind, string, string]) => {
       const n = comment.reactions.counts[kind] ?? 0;
       const mine = comment.reactions.mine.includes(kind);
-      // 没人投又没投过的不占地方，除非已经有人投过同一评论的其它表情
-      if (!n && !mine) return nothing;
       const busy = this._view.reacting === `${comment.id}:${kind}`;
       return html`<button
         type="button"
@@ -484,23 +482,25 @@ export class CommentWidget extends LitElement {
         ?disabled=${busy}
         @click=${() => this.react(comment, kind)}
       >${emoji}${n ? html`<span class="count">${n}</span>` : nothing}</button>`;
-    });
-    const any = shown.some((item) => item !== nothing);
-    const picker = html`<details class="picker">
-      <summary class="link" aria-label="加个表情">＋</summary>
-      <div class="reacts">${REACTIONS.map(([kind, emoji, label]) => {
-        const n = comment.reactions.counts[kind] ?? 0;
-        const mine = comment.reactions.mine.includes(kind);
-        return html`<button
-          type="button"
-          aria-pressed=${mine ? "true" : "false"}
-          aria-label=${`${label}，${n} 人`}
-          @click=${() => this.react(comment, kind)}
-        >${emoji}${n ? html`<span class="count">${n}</span>` : nothing}</button>`;
-      })}</div>
-    </details>`;
-    if (!any) return picker;
-    return html`<div class="reacts">${shown}${picker}</div>`;
+    };
+
+    // 有人投过或自己投过的才挂出来；其余收进「＋」里，避免同一个表情出现两次
+    const shown = REACTIONS.filter(
+      ([kind]) =>
+        (comment.reactions.counts[kind] ?? 0) > 0 || comment.reactions.mine.includes(kind),
+    );
+    const rest = REACTIONS.filter(([kind]) => !shown.some(([s]) => s === kind));
+
+    const picker =
+      rest.length > 0
+        ? html`<details class="picker">
+            <summary class="link" aria-label="加个表情">＋</summary>
+            <div class="reacts">${rest.map(button)}</div>
+          </details>`
+        : nothing;
+
+    if (shown.length === 0) return picker;
+    return html`<div class="reacts">${shown.map(button)}${picker}</div>`;
   }
 
   private reply(target: Comment): void {
