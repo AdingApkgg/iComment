@@ -562,3 +562,80 @@ async fn daily_soft_cap_forces_review_but_keeps_accepting() {
 
     h.finish().await;
 }
+
+#[tokio::test]
+async fn every_moderation_step_leaves_a_trace() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+
+    let token = h.login("trace@example.com").await;
+    let (key, site) = h.create_site(&token, "trace.example.com").await;
+
+    let (status, created) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/trace", "body_md": "等一等再上线", "author_name": "小秋" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = created["id"].as_str().expect("id");
+
+    let (status, _) = h
+        .post_auth(
+            &format!("{V1}/agent/sites/{site}/comments/{id}/moderate"),
+            &token,
+            serde_json::json!({ "action": "approve" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = h
+        .post_auth(
+            &format!("{V1}/agent/sites/{site}/comments/{id}/moderate"),
+            &token,
+            serde_json::json!({ "action": "hide", "reason": "看不出重点" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // 一条评论的历史：谁做的、做了什么、为什么，都在
+    let (status, one) = h
+        .get(
+            &format!("{V1}/agent/sites/{site}/audit?comment={id}"),
+            &token,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{one}");
+    let events = one["events"].as_array().expect("events");
+    assert_eq!(events.len(), 2, "{one}");
+    assert_eq!(events[0]["action"], "visible");
+    assert_eq!(events[1]["action"], "hidden");
+    assert_eq!(events[1]["reason"], "看不出重点");
+    assert_eq!(events[1]["actor_kind"], "user");
+
+    // 站点视角能看到指向哪条评论、哪个页面
+    let (status, all) = h
+        .get(&format!("{V1}/agent/sites/{site}/audit"), &token)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{all}");
+    let latest = all["events"]
+        .as_array()
+        .expect("events")
+        .first()
+        .expect("one event");
+    assert_eq!(latest["comment_id"], id);
+    assert_eq!(latest["thread_path"], "/trace");
+    assert!(latest["excerpt"].as_str().unwrap_or("").contains("等一等"));
+
+    // 站点主人页面上读得到
+    let page = h
+        .raw("GET", &format!("/dashboard/sites/{site}/audit"), &[], None)
+        .await;
+    let (_, text) = crate::common::text(page).await;
+    assert!(text.contains("审核留痕"), "{text}");
+    assert!(text.contains("/trace"), "{text}");
+
+    h.finish().await;
+}

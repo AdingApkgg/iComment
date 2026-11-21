@@ -48,6 +48,7 @@ pub fn build(state: AppState) -> Router {
             post(api::agent::moderate),
         )
         .route("/sites/{site_id}/threads", get(api::agent::list_threads))
+        .route("/sites/{site_id}/audit", get(api::agent::audit_log))
         .route("/sites/{site_id}/stats", get(api::agent::stats))
         .route("/sites/{site_id}/verify", post(api::verify::verify_install))
         .route("/sites/{site_id}/identity", post(api::agent::sign_identity));

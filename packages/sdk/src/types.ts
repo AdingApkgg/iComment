@@ -75,6 +75,19 @@ export type TokenIssued = {
 
 export type ModerateAction = "approve" | "hide" | "spam" | "delete";
 
+/** 一次审核动作的留痕。 */
+export interface AuditEvent {
+  id: string;
+  comment_id: string | null;
+  actor_kind: string;
+  actor_id: string | null;
+  action: string;
+  reason: string | null;
+  created_at: string;
+  thread_path?: string | null;
+  excerpt?: string | null;
+}
+
 export type VerifyFound = "script" | "element" | "site_key" | "path";
 
 export type VerifyResult = {

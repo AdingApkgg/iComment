@@ -26,6 +26,7 @@ pub fn build(state: AppState) -> Router {
             "/dashboard/sites/{site_id}/threads/{thread_id}",
             get(web::thread_page),
         )
+        .route("/dashboard/sites/{site_id}/audit", get(web::audit_page))
         .route(
             "/dashboard/comments/{comment_id}/moderate",
             post(web::moderate),

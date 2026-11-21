@@ -235,6 +235,20 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "audit_log",
+    {
+      title: "审核留痕",
+      description: "最近的放行、隐藏、删除记录。传 comment_id 只看那一条的历史",
+      inputSchema: z.object({
+        site_id: z.string(),
+        comment_id: z.string().optional(),
+        token: siteTokenSchema,
+      }),
+    },
+    wrap(async ({ site_id, comment_id, token }) => client(token).auditLog(site_id, comment_id)),
+  );
+
+  server.registerTool(
     "site_stats",
     {
       title: "站点统计",

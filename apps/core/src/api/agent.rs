@@ -4,7 +4,7 @@
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::{self, Agent, DeviceOutcome},
-    domain::{account, comment, site, thread},
+    domain::{account, comment, moderation, site, thread},
     error::{Code, Problem, Result},
     identity, markdown,
     state::AppState,
@@ -530,4 +530,29 @@ pub async fn stats(
         pending: row.2,
         spam: row.3,
     }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuditLog {
+    pub events: Vec<moderation::Event>,
+}
+
+/// 站点最近的审核动作。传 `comment` 只看那一条的历史。
+pub async fn audit_log(
+    State(state): State<AppState>,
+    agent: Agent,
+    Path(site_id): Path<Uuid>,
+    Query(q): Query<AuditQuery>,
+) -> Result<Json<AuditLog>> {
+    ensure_site_scope(&agent, site_id)?;
+    let events = match q.comment {
+        Some(comment_id) => moderation::for_comment(&state, site_id, comment_id).await?,
+        None => moderation::recent(&state, site_id, 200).await?,
+    };
+    Ok(Json(AuditLog { events }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuditQuery {
+    pub comment: Option<Uuid>,
 }

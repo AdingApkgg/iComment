@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     api, auth,
-    domain::{account, comment, site, thread},
+    domain::{account, comment, moderation, site, thread},
     error::{Code, Problem, Result},
     state::AppState,
 };
@@ -205,6 +205,11 @@ struct SiteDetail {
     pending: i64,
     spam: i64,
     total: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuditQuery {
+    pub comment: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -570,7 +575,8 @@ pub fn site_detail(
   </form>
   <p class="muted">{challenge_note}</p>
 </div>
-<div class="card"><h2>页面</h2><ul class="list">{thread_rows}</ul></div>
+<div class="card"><h2>页面</h2><ul class="list">{thread_rows}</ul>
+  <p><a href="/dashboard/sites/{id}/audit">看审核留痕 →</a></p></div>
 <div class="card"><h2>嵌入代码</h2>
   <pre>{snippet}</pre>
 </div>
@@ -635,6 +641,70 @@ pub fn site_detail(
             ))
             .unwrap_or_default(),
     )
+}
+
+/// 站点审核留痕。`only` 有值时只看这一条评论的历史。
+pub fn audit_view(events: &[moderation::Event], only: Option<Uuid>) -> String {
+    let mut rows = String::new();
+    for e in events {
+        let target = match (&e.thread_path, e.comment_id) {
+            (Some(path), Some(id)) => format!(
+                r#"<a href="/dashboard/comments?focus={id}"><code>{}</code></a>"#,
+                esc(path)
+            ),
+            (Some(path), None) => format!("<code>{}</code>", esc(path)),
+            _ => "<span class=\"muted\">（已移除）</span>".to_owned(),
+        };
+        rows.push_str(&format!(
+            r##"<li>
+  <div class="meta"><b>{who}</b> · {when} · <span class="pill">{act}</span></div>
+  <div class="muted">对 {target}{reason}</div>
+</li>"##,
+            who = moderation::actor(&e.actor_kind),
+            when = e.created_at.format("%m-%d %H:%M:%S"),
+            act = moderation::label(&e.action),
+            reason = e
+                .reason
+                .as_deref()
+                .map(|r| format!("：{}", esc(r)))
+                .unwrap_or_default(),
+        ));
+    }
+    if rows.is_empty() {
+        rows.push_str("<li class=\"muted\">还没有审核动作</li>");
+    }
+    let head = match only {
+        Some(id) => format!(
+            r#"<h1>这条评论的历史</h1><p class="muted">{id}</p>"#,
+            id = id
+        ),
+        None => {
+            "<h1>审核留痕</h1><p class=\"muted\">最近的放行、隐藏、删除都记在这。</p>".to_owned()
+        }
+    };
+    format!(
+        r#"<div class="card">{head}</div><div class="card"><ul class="comments">{rows}</ul></div>"#
+    )
+}
+
+pub async fn audit_page(
+    State(state): State<AppState>,
+    Session(account): Session,
+    Path(site_id): Path<Uuid>,
+    Query(q): Query<AuditQuery>,
+) -> Result<Html<String>> {
+    let owned = site::list_for_owner(&state, account.id).await?;
+    if !owned.iter().any(|s| s.id == site_id) {
+        return Err(Problem::code(Code::Forbidden, "not your site"));
+    }
+    let (events, only) = match q.comment {
+        Some(comment_id) => (
+            moderation::for_comment(&state, site_id, comment_id).await?,
+            Some(comment_id),
+        ),
+        None => (moderation::recent(&state, site_id, 200).await?, None),
+    };
+    Ok(Html(render("审核留痕", &audit_view(&events, only), true)))
 }
 
 pub fn thread_detail(thread: &thread_web::Thread, comments: &[comment_web::Comment]) -> String {

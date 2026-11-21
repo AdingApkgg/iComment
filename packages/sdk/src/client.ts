@@ -2,6 +2,7 @@
 
 import { request, type Transport } from "./transport.js";
 import type {
+  AuditEvent,
   Comment,
   CommentPage,
   DeviceStart,
@@ -128,6 +129,17 @@ export class Client {
       `/agent/sites/${siteId}/comments/${commentId}/moderate`,
       { action },
     ).then((r) => r.data.comment);
+  }
+
+  /** 审核留痕。传 commentId 只看那一条的历史。 */
+  async auditLog(siteId: string, commentId?: string): Promise<AuditEvent[]> {
+    const suffix = commentId ? `?comment=${commentId}` : "";
+    const { data } = await request<{ events: AuditEvent[] }>(
+      this.transport,
+      "GET",
+      `/agent/sites/${siteId}/audit${suffix}`,
+    );
+    return data.events;
   }
 
   async listThreads(siteId: string): Promise<Thread[]> {
