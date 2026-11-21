@@ -14,9 +14,9 @@ iComment = 开源 SaaS 评论服务。三种消费者，按优先级：
 
 ```
 apps/core          Rust / axum
-  /api/v1/*        REST：权威接口（公开读/写 + agent 面）
+  /api/*        REST：权威接口（公开读/写 + agent 面）
   /widget/v1/*     内嵌 widget 产物（构建期 include_bytes，单二进制自带）
-  /dashboard /sites 等  控制台：登录、建站、审核、令牌、device 页
+  /dash /sites 等  控制台：登录、建站、审核、令牌、device 页
 packages/widget    Lit + Shadow DOM，构建产物同时供 CDN 分发，MIT
 packages/sdk       带类型的 API 客户端（TS），MIT
 packages/mcp       MCP server：stdio 或 `--http` 独立进程，MIT

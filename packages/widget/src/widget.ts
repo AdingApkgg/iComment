@@ -341,9 +341,9 @@ export class CommentWidget extends LitElement {
     void this.load();
   }
 
-  /** 没有 api-base 时，按脚本地址推断同源的 /api/v1（自托管最常见的情形）。 */
+  /** 没有 api-base 时，按脚本地址推断同源的 /api（自托管最常见的情形）。 */
   private deriveBase(): string {
-    return new URL("/api/v1", SELF_SRC || location.href).href;
+    return new URL("/api", SELF_SRC || location.href).href;
   }
 
   private url(): string {

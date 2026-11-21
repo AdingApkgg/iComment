@@ -361,7 +361,7 @@ async fn discovery_documents_are_served() {
 
     let (status, body) = crate::common::text(h.raw("GET", "/llms.txt", &[], None).await).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("/api/v1/agent/device"), "{body}");
+    assert!(body.contains("/api/agent/device"), "{body}");
 
     let (status, body) = crate::common::text(h.raw("GET", "/install.md", &[], None).await).await;
     assert_eq!(status, StatusCode::OK);
@@ -479,7 +479,7 @@ async fn verify_reports_a_private_host_with_an_actionable_hint() {
         .await;
     let (status, body) = h
         .post_auth(
-            &format!("/api/v1/agent/sites/{site_id}/verify"),
+            &format!("/api/agent/sites/{site_id}/verify"),
             &token,
             serde_json::json!({ "url": "http://127.0.0.1:8090/post" }),
         )
@@ -507,7 +507,7 @@ async fn verify_rejects_a_relative_url() {
         .await;
     let (status, body) = h
         .post_auth(
-            &format!("/api/v1/agent/sites/{site_id}/verify"),
+            &format!("/api/agent/sites/{site_id}/verify"),
             &token,
             serde_json::json!({ "url": "ftp://example.com/x" }),
         )
@@ -693,7 +693,7 @@ async fn every_moderation_step_leaves_a_trace() {
     let page = h
         .raw(
             "GET",
-            &format!("/dashboard/sites/{site}/audit"),
+            &format!("/dash/sites/{site}/audit"),
             &[("cookie", &cookie)],
             None,
         )
@@ -819,7 +819,7 @@ async fn reactions_count_once_per_voter() {
     let (key, _) = h.create_site(&token, "reactions.example").await;
     let created = h
         .anon(
-            "/api/v1/comments",
+            "/api/comments",
             &key,
             json!({"path": "/r", "body_md": "hi"}),
         )
@@ -831,7 +831,7 @@ async fn reactions_count_once_per_voter() {
     // 同一个投票人连投两次只算一票
     let first = h
         .react(
-            &format!("/api/v1/comments/{id}/reactions/up"),
+            &format!("/api/comments/{id}/reactions/up"),
             &key,
             Some("v1"),
         )
@@ -839,7 +839,7 @@ async fn reactions_count_once_per_voter() {
     assert_eq!(first.0, StatusCode::OK);
     let again = h
         .react(
-            &format!("/api/v1/comments/{id}/reactions/up"),
+            &format!("/api/comments/{id}/reactions/up"),
             &key,
             Some("v1"),
         )
@@ -849,7 +849,7 @@ async fn reactions_count_once_per_voter() {
 
     let other = h
         .react(
-            &format!("/api/v1/comments/{id}/reactions/heart"),
+            &format!("/api/comments/{id}/reactions/heart"),
             &key,
             Some("v2"),
         )
@@ -858,13 +858,13 @@ async fn reactions_count_once_per_voter() {
     assert_eq!(other.1["counts"]["up"], 1);
 
     // 列表里带上票数
-    let page = h.get_anon("/api/v1/comments?path=/r", &key).await.1;
+    let page = h.get_anon("/api/comments?path=/r", &key).await.1;
     assert_eq!(page["comments"][0]["reactions"]["counts"]["up"], 1);
 
     // 撤票幂等
     let (_, gone) = h
         .unreact(
-            &format!("/api/v1/comments/{id}/reactions/up"),
+            &format!("/api/comments/{id}/reactions/up"),
             &key,
             Some("v1"),
         )
@@ -872,7 +872,7 @@ async fn reactions_count_once_per_voter() {
     assert!(gone["counts"].get("up").is_none());
     let (_, gone_again) = h
         .unreact(
-            &format!("/api/v1/comments/{id}/reactions/up"),
+            &format!("/api/comments/{id}/reactions/up"),
             &key,
             Some("v1"),
         )
@@ -892,7 +892,7 @@ async fn reactions_reject_unknown_kind_and_need_a_voter() {
     let (key, _) = h.create_site(&token, "reaction-bad.example").await;
     let created = h
         .anon(
-            "/api/v1/comments",
+            "/api/comments",
             &key,
             json!({"path": "/r", "body_md": "hi"}),
         )
@@ -903,7 +903,7 @@ async fn reactions_reject_unknown_kind_and_need_a_voter() {
 
     let bad = h
         .react(
-            &format!("/api/v1/comments/{id}/reactions/clap"),
+            &format!("/api/comments/{id}/reactions/clap"),
             &key,
             Some("v1"),
         )
@@ -924,7 +924,7 @@ async fn anonymous_react_gets_a_signed_voter_cookie() {
     let (key, _) = h.create_site(&token, "reaction-anon.example").await;
     let created = h
         .anon(
-            "/api/v1/comments",
+            "/api/comments",
             &key,
             json!({"path": "/r", "body_md": "hi"}),
         )
@@ -934,11 +934,7 @@ async fn anonymous_react_gets_a_signed_voter_cookie() {
     let id = comment["id"].as_str().expect("id");
 
     let (status, body) = h
-        .react(
-            &format!("/api/v1/comments/{id}/reactions/heart"),
-            &key,
-            None,
-        )
+        .react(&format!("/api/comments/{id}/reactions/heart"), &key, None)
         .await;
     assert_eq!(status, StatusCode::OK);
     let cookie = body["_cookie"].as_str().expect("cookie");

@@ -75,12 +75,10 @@ impl Code {
     /// agent 可直接执行的下一步。没有就给 None，避免编造。
     pub const fn next(self) -> Option<&'static str> {
         match self {
-            Self::Unauthenticated => {
-                Some("POST /api/v1/agent/device then poll /api/v1/agent/token")
-            }
-            Self::DevicePending => Some("poll POST /api/v1/agent/token again after user approves"),
-            Self::DeviceExpired => Some("POST /api/v1/agent/device to start a new flow"),
-            Self::SiteNotFound => Some("call site.create first (POST /api/v1/sites)"),
+            Self::Unauthenticated => Some("POST /api/agent/device then poll /api/agent/token"),
+            Self::DevicePending => Some("poll POST /api/agent/token again after user approves"),
+            Self::DeviceExpired => Some("POST /api/agent/device to start a new flow"),
+            Self::SiteNotFound => Some("call site.create first (POST /api/sites)"),
             Self::ThreadNotFound => {
                 Some("call list_comments for this path to create/read the thread")
             }

@@ -71,8 +71,8 @@ pub fn build(state: AppState) -> Router {
         .route("/widget/v1/icomment.js", get(widget_js))
         .route("/static/app.css", get(app_css))
         .route("/media/{file}", get(api::upload::media))
-        .nest("/api/v1", public.merge(anon))
-        .nest("/api/v1/agent", agent)
+        .nest("/api", public.merge(anon))
+        .nest("/api/agent", agent)
         .fallback(not_found)
         .layer(axum::middleware::from_fn(version_header))
         .layer(TimeoutLayer::with_status_code(

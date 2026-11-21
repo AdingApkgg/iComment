@@ -5,7 +5,7 @@
 ## 1. 拿凭据（device authorization）
 
 ```bash
-curl -sX POST $BASE/api/v1/agent/device
+curl -sX POST $BASE/api/agent/device
 # { "device_code": "…", "user_code": "ABCD-2345", "verification_uri": "$BASE/device", "expires_in": 900 }
 ```
 
@@ -14,7 +14,7 @@ curl -sX POST $BASE/api/v1/agent/device
 然后轮询：
 
 ```bash
-curl -sX POST $BASE/api/v1/agent/token -H 'content-type: application/json' \
+curl -sX POST $BASE/api/agent/token -H 'content-type: application/json' \
   -d '{"device_code":"…"}'
 # 202/401 device_authorization_pending  → 继续等，间隔 5s
 # 200 { "token": "tsa_…", "account_id": "…" }
@@ -25,7 +25,7 @@ curl -sX POST $BASE/api/v1/agent/token -H 'content-type: application/json' \
 ## 2. 建站
 
 ```bash
-curl -sX POST $BASE/api/v1/agent/sites -H "authorization: Bearer $TOKEN" \
+curl -sX POST $BASE/api/agent/sites -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"origin":"blog.example.com","name":"我的博客"}'
 ```
 
@@ -47,7 +47,7 @@ curl -sX POST $BASE/api/v1/agent/sites -H "authorization: Bearer $TOKEN" \
 ## 3. 验收
 
 ```bash
-curl -sX POST $BASE/api/v1/agent/sites/$SITE_ID/verify -H "authorization: Bearer $TOKEN" \
+curl -sX POST $BASE/api/agent/sites/$SITE_ID/verify -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"url":"https://blog.example.com/posts/hello"}'
 ```
 
@@ -62,8 +62,8 @@ curl -sX POST $BASE/api/v1/agent/sites/$SITE_ID/verify -H "authorization: Bearer
 ## 4. 装完自检
 
 ```bash
-curl -s "$BASE/api/v1/site?path=/posts/hello" -H 'x-site-key: SITE_KEY'   # 200 + 站点配置
-curl -sX POST $BASE/api/v1/comments -H 'x-site-key: SITE_KEY' \
+curl -s "$BASE/api/site?path=/posts/hello" -H 'x-site-key: SITE_KEY'   # 200 + 站点配置
+curl -sX POST $BASE/api/comments -H 'x-site-key: SITE_KEY' \
   -H 'content-type: application/json' \
   -d '{"path":"/posts/hello","body":"第一条","author":"装站自检"}'
 ```

@@ -8,7 +8,9 @@ services:
   weed-master:
     image: chrislusf/seaweedfs:4.48
     restart: unless-stopped
-    command: master -ip=weed-master -mdir=/data -volumeSizeLimitMB=1024 -defaultReplication=000
+    command: >-
+      master -ip=weed-master -mdir=/data -volumeSizeLimitMB=1024
+      -defaultReplication=000
     volumes: ["weedm:/data"]
   weed-volume:
     image: chrislusf/seaweedfs:4.48
@@ -20,7 +22,7 @@ services:
     image: chrislusf/seaweedfs:4.48
     restart: unless-stopped
     command: filer -master=weed-master:9333 -ip=seaweedfs -port=8888
-    ports: ["18888:8888"]
+    ports: ["127.0.0.1:18888:8888"]
     depends_on: [weed-master, weed-volume]
 volumes:
   weedm:

@@ -2,7 +2,7 @@
  * iComment agent SDK。
  *
  * ```ts
- * const client = createClient({ base: "https://comments.example.com/api/v1", token });
+ * const client = createClient({ base: "https://comments.example.com/api", token });
  * await client.createSite({ origin: "blog.example.com" });
  * ```
  */

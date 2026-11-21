@@ -15,9 +15,9 @@ agent 是主用户，所以开户、建站、验收都由它驱动，人只在�
 ## 认证
 
 - 首次调用任意工具 → `402`/`401` 带 `next`：device authorization。
-  - `POST /api/v1/agent/device` → `{ device_code, user_code, verification_uri }`
+  - `POST /api/agent/device` → `{ device_code, user_code, verification_uri }`
   - 工具把 `verification_uri` 与 `user_code` 原样返回并**告诉 agent 停下等人点**。
-  - 轮询 `POST /api/v1/agent/token`，成功后返回 `tsa_` 前缀 bearer。
+  - 轮询 `POST /api/agent/token`，成功后返回 `tsa_` 前缀 bearer。
 - 一次性是的：token 只在 agent 的流程里活着，可 `revoke`。
 - token 必须 `site`-scoped：`site` token 只能动指定站点。
 
@@ -46,14 +46,14 @@ agent 是主用户，所以开户、建站、验收都由它驱动，人只在�
 
 `<ic-comment>`（不是 `<icomment>`：后者不是合法的自定义元素名）。标签名与 `path` 也可省略，脚本会按 `data-site-key` 自动插入并取当前路径，但显式写出来的页面更容易通过验收。
 
-纯 headless 调用方一行 JS 都不用加载，直接打 `/api/v1/comments`。
+纯 headless 调用方一行 JS 都不用加载，直接打 `/api/comments`。
 
 ## verify_install：整个流程的关键
 
 没有它，AI 会以为装好了然后收工，用户看到空评论区，这一单就丢。
 
 ```
-POST /api/v1/agent/sites/{site_id}/verify { url }
+POST /api/agent/sites/{site_id}/verify { url }
   1. 服务端 GET url（UA: icomment-verify/1，8s，最多 3 跳）
   2. 在 HTML 里查五项：script 存在、src 指向本实例的 icomment.js、带 defer、ic-comment 元素在 body 内、site_key 对得上、path 是页面路径（path 缺省可从 `location.pathname` 取）
   3. 逐项报缺并给出可直接照做的 hint
@@ -65,7 +65,7 @@ POST /api/v1/agent/sites/{site_id}/verify { url }
 - `partial`：`{ "status": "partial", "missing": ["site_key"], "hint": "元素上补 data-site-key=\"…\"，改完是 <ic-comment data-site-key=\"…\" path=\"…\"></ic-comment>" }` → agent 能自己补
 - `failed`：`{ "status": "failed", "reason": "timeout" | "unreachable" | "page_error" | "too_many_redirects" | "private_host", "hint": "…" }` → hint 说清是部署没上去还是地址给了内网
 
-控制台站点页也有同一个动作（`/dashboard/sites/{id}?verify={url}`），人不用开 MCP 就能自查。本地调试给核心加 `IC_VERIFY_PRIVATE=1` 才允许抓回环地址。
+控制台站点页也有同一个动作（`/dash/sites/{id}?verify={url}`），人不用开 MCP 就能自查。本地调试给核心加 `IC_VERIFY_PRIVATE=1` 才允许抓回环地址。
 
 **验收只读用户公开页面，不执行用户 JS**（除第 3 步的探测回执），避免 SSRF 放大：目标 URL 必须公网可解析、禁 `169.254/16` 与 `127/8`、超时 8s、跟随最多 3 跳。
 

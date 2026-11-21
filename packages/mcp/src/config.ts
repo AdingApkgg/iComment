@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-const DEFAULT_BASE = "http://127.0.0.1:8080/api/v1";
+const DEFAULT_BASE = "http://127.0.0.1:8080/api";
 
 function tokenPath(): string {
   const root = process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config");
@@ -15,9 +15,9 @@ export function apiBase(): string {
   return process.env.IC_API_BASE ?? DEFAULT_BASE;
 }
 
-/** 服务根（去掉 `/api/v1`），embed 链接和 /llms.txt 都挂在上面。 */
+/** 服务根（去掉 `/api`），embed 链接和 /llms.txt 都挂在上面。 */
 export function serviceOrigin(): string {
-  return apiBase().replace(/\/api\/v1\/?$/, "");
+  return apiBase().replace(/\/api\/?$/, "");
 }
 
 export function loadToken(): string | undefined {

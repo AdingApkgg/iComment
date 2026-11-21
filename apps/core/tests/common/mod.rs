@@ -19,7 +19,7 @@ use icomment_core::{
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
 
-pub const V1: &str = "/api/v1";
+pub const V1: &str = "/api";
 
 pub struct Harness {
     pub state: AppState,

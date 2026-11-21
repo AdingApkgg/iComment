@@ -37,11 +37,11 @@
 ```
 payload = base64url(JSON{ site, uid, name, avatar, iat, exp })   // exp-iat ≤ 300s
 sig     = base64url(HMAC-SHA256(site_secret, payload))
-POST /api/v1/comments
+POST /api/comments
 X-IC-Identity: <payload>.<sig>
 ```
 
-不用自己拼：`POST /api/v1/agent/sites/{site_id}/identity` 传 `{uid, name}` 就返回整套（`header` + `expires_in`），SDK 是 `signIdentity()`，MCP 是 `sign_identity`。
+不用自己拼：`POST /api/agent/sites/{site_id}/identity` 传 `{uid, name}` 就返回整套（`header` + `expires_in`），SDK 是 `signIdentity()`，MCP 是 `sign_identity`。
 
 - 验签失败不拒，静默降级成匿名（留 `identity_unverified` 标记），消息照常入库。
 - 验过就免人机验证，且即使站点开了审核也直接 `visible`（除非被内容规则判成 spam）。

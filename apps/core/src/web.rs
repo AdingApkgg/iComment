@@ -110,6 +110,64 @@ pub async fn login_page() -> Html<String> {
     ))
 }
 
+/// 落地页：/ 就是这一页，讲清楚这是什么、怎么装、往哪进后台。
+pub async fn landing(State(state): State<AppState>) -> Html<String> {
+    let cfg = state.cfg();
+    let base = &cfg.public_base_url;
+    let snippet = api::agent::embed_snippet(&state, "<你的 site-key>");
+    Html(crate::web::render(
+        "自托管评论",
+        &format!(
+            r##"<section class="hero card">
+  <h1>评论区长在你自己库里</h1>
+  <p class="tagline">iComment 是开源自托管评论系统。Rust 单二进制，内嵌评论组件与迁移，
+  数据只进你自己的 PostgreSQL，没有第三方脚本跟着访客跑。</p>
+  <p class="cta">
+    <a class="button" href="/dash">进入控制台</a>
+    <a class="button ghost" href="/install.md">看安装说明</a>
+  </p>
+</section>
+
+<div class="grid">
+  <div class="card">
+    <h2>agent 自己装站</h2>
+    <p class="muted">一句 <code>claude mcp add</code> 加一次设备授权，agent 建站、贴 snippet、
+    跑验收，人只在浏览器点一次确认。</p>
+  </div>
+  <div class="card">
+    <h2>REST 是唯一权威</h2>
+    <p class="muted">MCP 只是同权限的一层薄封装，删掉它服务照跑。任何客户端都能直接打
+    <code>{base}/api</code>。</p>
+  </div>
+  <div class="card">
+    <h2>12 KB 的影子 DOM</h2>
+    <p class="muted">Lit 写的 Web Component，样式封在 Shadow DOM 里，不会被主题乱改，
+    也不会改你的主题。</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>贴这两行就有评论区</h2>
+  <pre>{snippet}</pre>
+  <p class="muted">已开源 AGPL-3.0；<code>packages/widget</code>、<code>packages/sdk</code>、
+  <code>packages/mcp</code> 是 MIT。</p>
+</div>
+
+<div class="card">
+  <h2>给机器看的入口</h2>
+  <ul class="list">
+    <li class="row"><a href="/llms.txt">/llms.txt</a><span class="muted">一页说清接口与上手步骤</span></li>
+    <li class="row"><a href="/install.md">/install.md</a><span class="muted">curl 版安装说明</span></li>
+    <li class="row"><a href="/api/config">/api/config</a><span class="muted">公开配置探测</span></li>
+  </ul>
+</div>"##,
+            base = esc(base),
+            snippet = esc(&snippet),
+        ),
+        false,
+    ))
+}
+
 #[derive(Deserialize)]
 pub struct LoginForm {
     pub email: String,
@@ -121,7 +179,7 @@ pub async fn login_submit(
 ) -> Result<Response> {
     let account = account::ensure(&state, &form.email).await?;
     let cookie = issue_cookie(&state, account.id);
-    let mut res = Redirect::to("/dashboard").into_response();
+    let mut res = Redirect::to("/dash").into_response();
     res.headers_mut().insert(
         header::SET_COOKIE,
         cookie.parse().expect("cookie chars are ASCII"),
@@ -146,7 +204,7 @@ pub async fn dashboard(
     let mut rows = String::new();
     for site in &sites {
         rows.push_str(&format!(
-            r#"<li class="row"><a href="/dashboard/sites/{id}">{origin}</a>
+            r#"<li class="row"><a href="/dash/sites/{id}">{origin}</a>
             <span class="muted">{n}</span></li>"#,
             id = site.id,
             origin = crate::web::esc(&site.origin),
@@ -168,7 +226,7 @@ pub async fn dashboard(
   <div class="row"><h1>我的站点</h1><a href="/logout">退出</a></div>
   <ul class="list">{rows}</ul>
 </div>
-<form method="post" action="/dashboard/sites" class="card">
+<form method="post" action="/dash/sites" class="card">
   <h2>新建站点</h2>
   <label>站点 origin<input name="origin" placeholder="example.com" required></label>
   <label>显示名（可选）<input name="name"></label>
@@ -202,7 +260,7 @@ pub async fn create_site(
         },
     )
     .await?;
-    Ok(Redirect::to(&format!("/dashboard/sites/{}", site.id)).into_response())
+    Ok(Redirect::to(&format!("/dash/sites/{}", site.id)).into_response())
 }
 
 struct SiteDetail {
@@ -332,7 +390,7 @@ pub async fn moderate(
     let target = form
         .redirect
         .filter(|t| t.starts_with('/'))
-        .unwrap_or_else(|| format!("/dashboard/sites/{site_id}"));
+        .unwrap_or_else(|| format!("/dash/sites/{site_id}"));
     Ok(Redirect::to(&target).into_response())
 }
 
@@ -371,7 +429,7 @@ pub async fn save_settings(
         },
     )
     .await?;
-    Ok(Redirect::to(&format!("/dashboard/sites/{site_id}")).into_response())
+    Ok(Redirect::to(&format!("/dash/sites/{site_id}")).into_response())
 }
 
 pub async fn thread_page(
@@ -493,7 +551,7 @@ pub fn esc(raw: &str) -> String {
 /// 只允许我们自己渲染出的 HTML 通过（已做转义，这里不再二次处理）。
 pub fn render(title: &str, body: &str, authed: bool) -> String {
     let nav = if authed {
-        r#"<nav><a href="/dashboard">站点</a><a href="/tokens">令牌</a><a href="/logout">退出</a></nav>"#
+        r#"<nav><a href="/dash">控制台</a><a href="/tokens">令牌</a><a href="/logout">退出</a></nav>"#
     } else {
         r#"<nav><a href="/">首页</a><a href="/login">登录</a></nav>"#
     };
@@ -559,7 +617,7 @@ pub fn site_detail(
     let mut thread_rows = String::new();
     for t in threads {
         thread_rows.push_str(&format!(
-            r#"<li class="row"><a href="/dashboard/sites/{sid}/threads/{tid}">{path}</a>
+            r#"<li class="row"><a href="/dash/sites/{sid}/threads/{tid}">{path}</a>
             <span class="muted">{count} 条</span></li>"#,
             sid = site.id,
             tid = t.id,
@@ -577,7 +635,7 @@ pub fn site_detail(
   <p class="muted">{name}</p>
   <p>待审 <b>{pending}</b> · 垃圾 <b>{spam}</b> · 合计 <b>{total}</b></p>
   <p class="muted">关掉审核后新评论直接上线。</p>
-  <form method="post" action="/dashboard/sites/{id}/settings" class="inline">
+  <form method="post" action="/dash/sites/{id}/settings" class="inline">
     <label class="check"><input type="checkbox" name="require_approval" value="1" {checked}> 需要审核</label>
     <label class="check">人机验证
       <select name="challenge_mode">
@@ -595,7 +653,7 @@ pub fn site_detail(
   <p class="muted">{challenge_note}</p>
 </div>
 <div class="card"><h2>页面</h2><ul class="list">{thread_rows}</ul>
-  <p><a href="/dashboard/sites/{id}/audit">看审核留痕 →</a></p></div>
+  <p><a href="/dash/sites/{id}/audit">看审核留痕 →</a></p></div>
 <div class="card"><h2>嵌入代码</h2>
   <pre>{snippet}</pre>
 </div>
@@ -604,7 +662,7 @@ pub fn site_detail(
   带上的评论免人机验证、免待审。秘钥别进前端。</p>
   <p class="muted">site_key <code>{site_key}</code></p>
   <pre>{secret}</pre>
-  <form method="get" action="/dashboard/sites/{id}" class="inline">
+  <form method="get" action="/dash/sites/{id}" class="inline">
     <input name="sign" placeholder="试签一个 uid" value="{sign_uid}">
     <button>签发</button>
   </form>
@@ -612,7 +670,7 @@ pub fn site_detail(
 </div>
 <div class="card"><h2>验收</h2>
   <p class="muted">贴上代码并部署后，填页面地址让服务端抓一次，检查四要素是否齐全。</p>
-  <form method="get" action="/dashboard/sites/{id}" class="inline">
+  <form method="get" action="/dash/sites/{id}" class="inline">
     <input name="verify" placeholder="{origin}/posts/hello" value="{verify_url}">
     <button>抓取验收</button>
   </form>
@@ -669,7 +727,7 @@ pub fn audit_view(events: &[moderation::Event], only: Option<Uuid>) -> String {
     for e in events {
         let target = match (&e.thread_path, e.comment_id) {
             (Some(path), Some(id)) => format!(
-                r#"<a href="/dashboard/comments?focus={id}"><code>{}</code></a>"#,
+                r#"<a href="/dash/comments?focus={id}"><code>{}</code></a>"#,
                 esc(path)
             ),
             (Some(path), None) => format!("<code>{}</code>", esc(path)),
@@ -731,8 +789,8 @@ pub fn thread_detail(thread: &thread_web::Thread, comments: &[comment_web::Comme
     let mut rows = String::new();
     for c in comments {
         let actions = format!(
-            r#"<form method="post" action="/dashboard/comments/{id}/moderate" class="inline">
-            <input type="hidden" name="redirect" value="/dashboard/sites/{sid}/threads/{tid}">
+            r#"<form method="post" action="/dash/comments/{id}/moderate" class="inline">
+            <input type="hidden" name="redirect" value="/dash/sites/{sid}/threads/{tid}">
             <button name="action" value="approve">通过</button>
             <button name="action" value="hide">隐藏</button>
             <button name="action" value="spam">垃圾</button>

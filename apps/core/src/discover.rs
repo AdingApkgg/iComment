@@ -20,16 +20,16 @@ pub async fn llms(state: State<AppState>) -> Response {
 
 ## 接口
 
-- REST: {base}/api/v1
+- REST: {base}/api
 - MCP (stdio): `npx -y @icomment/mcp`，HTTP 传输 `/mcp`
 - 安装说明: {base}/install.md
 
 ## 上手
 
-1. `POST {base}/api/v1/agent/device` 拿设备码，把 `verification_uri_complete` 交给站点主人在浏览器里确认
-2. 轮询 `POST {base}/api/v1/agent/token` 直到拿到以 `tsa_` 开头的 token
-3. `POST {base}/api/v1/agent/sites` 建站，响应里的 `embed_snippet` 原样贴进 HTML
-4. `POST {base}/api/v1/agent/sites/<site_id>/verify` 校验装好了没
+1. `POST {base}/api/agent/device` 拿设备码，把 `verification_uri_complete` 交给站点主人在浏览器里确认
+2. 轮询 `POST {base}/api/agent/token` 直到拿到以 `tsa_` 开头的 token
+3. `POST {base}/api/agent/sites` 建站，响应里的 `embed_snippet` 原样贴进 HTML
+4. `POST {base}/api/agent/sites/<site_id>/verify` 校验装好了没
 
 账号级 token 可管所有站；每个站另有站点级 token，只够读写自己。
 "#
@@ -47,13 +47,13 @@ pub async fn install(state: State<AppState>) -> Response {
 ## 1. 拿 token
 
 ```sh
-curl -s {base}/api/v1/agent/device -X POST
+curl -s {base}/api/agent/device -X POST
 ```
 
 响应里的链接打开确认，然后：
 
 ```sh
-curl -s {base}/api/v1/agent/token -X POST \
+curl -s {base}/api/agent/token -X POST \
   -H 'content-type: application/json' \
   -d '{{"device_code":"<上一步的 device_code>"}}'
 ```
@@ -63,7 +63,7 @@ curl -s {base}/api/v1/agent/token -X POST \
 ## 2. 建站
 
 ```sh
-curl -s {base}/api/v1/agent/sites -X POST \
+curl -s {base}/api/agent/sites -X POST \
   -H 'authorization: Bearer <token>' \
   -H 'content-type: application/json' \
   -d '{{"origin":"https://example.com"}}'
@@ -81,7 +81,7 @@ curl -s {base}/api/v1/agent/sites -X POST \
 ## 4. 校验
 
 ```sh
-curl -s {base}/api/v1/verify -X POST \
+curl -s {base}/api/verify -X POST \
   -H 'authorization: Bearer <token>' \
   -H 'content-type: application/json' \
   -d '{{"site_id":"<站点 id>","url":"https://example.com/posts/hello"}}'
