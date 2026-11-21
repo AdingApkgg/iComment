@@ -15,6 +15,8 @@ pub struct Config {
     pub turnstile_secret: Option<String>,
     /// Akismet key；配了才会对外发判定请求。
     pub akismet_key: Option<String>,
+    /// 附图目录；空则不开放上传。
+    pub upload_dir: String,
     /// 判定接口，默认官方地址；自建代理或测试时改这里。
     pub akismet_endpoint: String,
     pub turnstile_site_key: Option<String>,
@@ -86,6 +88,7 @@ impl Config {
             turnstile_site_key: var("IC_TURNSTILE_SITE_KEY"),
             turnstile_secret: var("IC_TURNSTILE_SECRET"),
             akismet_key: var("IC_AKISMET_KEY"),
+            upload_dir: var("IC_UPLOAD_DIR").unwrap_or_else(|| "var/uploads".to_owned()),
             akismet_endpoint: var("IC_AKISMET_ENDPOINT")
                 .unwrap_or_else(|| "https://rest.akismet.com/1.1/comment-check".to_owned()),
             widget_cdn,

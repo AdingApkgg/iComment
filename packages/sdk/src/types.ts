@@ -101,6 +101,16 @@ export interface AuditEvent {
   excerpt?: string | null;
 }
 
+/** 上传成功后的附件；`markdown` 直接插进 body_md。 */
+export type Stored = {
+  id: string;
+  /** 绝对地址，跨域嵌入也能显示 */
+  url: string;
+  markdown: string;
+  width: number;
+  height: number;
+};
+
 export type VerifyFound = "script" | "element" | "site_key" | "path";
 
 export type VerifyResult = {

@@ -32,6 +32,7 @@ agent 是主用户，所以开户、建站、验收都由它驱动，人只在�
 | `verify_install` | **服务端自己抓页面验收** | 见下 |
 | `list_threads` / `site_stats` | 按 path 列评论 / 看计数 | 游标分页 |
 | `audit_log` | 谁在何时放行、隐藏、删除了哪条（含失败理由） | `comment_id` 可选，只看单条历史 |
+| `upload_attachment` | 传一张图，回可插进 `body_md` 的 markdown 片段 | `data_base64` 不带 `data:` 前缀；≤4MiB，PNG/JPEG/WebP/GIF |
 | `list_comments` / `create_comment` / `moderate_comment` | 审核与回填 | 需站点 scope |
 
 `create_site` 返回的 `embed_snippet` 形如（`v=` 是版本号，用来破浏览器缓存）：

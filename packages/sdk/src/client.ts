@@ -1,6 +1,6 @@
 /** 资源方法：全走 transport，错误统一抛 ICommentError。 */
 
-import { request, type Transport } from "./transport.js";
+import { request, requestRaw, type Transport } from "./transport.js";
 import type {
   AuditEvent,
   Comment,
@@ -12,6 +12,7 @@ import type {
   Site,
   SiteCreated,
   Stats,
+  Stored,
   Thread,
   TokenIssued,
   VerifyResult,
@@ -163,6 +164,16 @@ export class Client {
     return request<SignedIdentity>(this.transport, "POST", `/agent/sites/${siteId}/identity`, {
       body: { uid, name: name ?? null },
     }).then((r) => r.data);
+  }
+
+  /** 上传一张图（site 或 agent 皆可，走公开口）；返回可插进 `body_md` 的片段。 */
+  async upload(siteKey: string, file: Blob, filename = "paste.png"): Promise<Stored> {
+    const form = new FormData();
+    form.append("file", file, filename);
+    const { data } = await requestRaw<Stored>(this.transport, "POST", "/uploads", form, {
+      "x-site-key": siteKey,
+    });
+    return data;
   }
 
   stats(siteId: string): Promise<Stats> {

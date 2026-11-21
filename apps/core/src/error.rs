@@ -21,6 +21,7 @@ pub enum Code {
     SiteNotFound,
     ThreadNotFound,
     CommentNotFound,
+    NotFound,
     // 反垃圾
     ChallengeRequired,
     ChallengeFailed,
@@ -42,6 +43,7 @@ impl Code {
             Self::SiteNotFound => "site_not_found",
             Self::ThreadNotFound => "thread_not_found",
             Self::CommentNotFound => "comment_not_found",
+            Self::NotFound => "not_found",
             Self::ChallengeRequired => "challenge_required",
             Self::ChallengeFailed => "challenge_failed",
             Self::TooLarge => "payload_too_large",
@@ -61,6 +63,7 @@ impl Code {
             | Self::SiteNotFound
             | Self::ThreadNotFound
             | Self::CommentNotFound => StatusCode::BAD_REQUEST,
+            Self::NotFound => StatusCode::NOT_FOUND,
             Self::ChallengeRequired | Self::ChallengeFailed => StatusCode::FORBIDDEN,
             Self::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,

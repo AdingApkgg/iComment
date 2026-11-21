@@ -254,6 +254,26 @@ export function buildServer(): McpServer {
   );
 
   server.registerTool(
+    "upload_attachment",
+    {
+      title: "上传附图",
+      description:
+        "传一张 PNG/JPEG/WebP/GIF（≤4MiB），把返回的 markdown 插进 body_md；每条评论最多 4 张",
+      inputSchema: z.object({
+        site_id: z.string(),
+        /** 图片字节的 base64（不带 data: 前缀） */
+        data_base64: z.string(),
+        filename: z.string().optional(),
+        token: siteTokenSchema,
+      }),
+    },
+    wrap(async ({ site_id, data_base64, filename, token }) => {
+      const bytes = Buffer.from(data_base64, "base64");
+      return client(token).upload(site_id, new Blob([bytes]), filename ?? "upload.png");
+    }),
+  );
+
+  server.registerTool(
     "site_stats",
     {
       title: "站点统计",

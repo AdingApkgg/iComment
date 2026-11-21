@@ -48,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
         .context("build http client")?;
 
     let state = AppState::new(db, redis, cfg.clone(), http);
+    spawn_upload_sweeper(state.clone());
     let app = router::build(state.clone()).merge(icomment_core::pages::build(state));
 
     let listener = TcpListener::bind(&cfg.bind)
@@ -85,6 +86,21 @@ async fn health() -> anyhow::Result<()> {
         resp.status()
     );
     Ok(())
+}
+
+/// 每小时收拾一次没被评论引用、已过期的上传。
+fn spawn_upload_sweeper(state: AppState) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(Duration::from_secs(3600));
+        loop {
+            tick.tick().await;
+            match icomment_core::domain::attachment::sweep(&state).await {
+                Ok(n) if n > 0 => tracing::info!(removed = n, "swept stale uploads"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "upload sweep failed"),
+            }
+        }
+    });
 }
 
 async fn shutdown() {

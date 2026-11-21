@@ -37,6 +37,12 @@ fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
 }
 
+/// 每个用例独立的附图目录，跑完不管。
+fn tmp_upload_dir() -> String {
+    let dir = std::env::temp_dir().join(format!("ic-up-{}", uuid::Uuid::now_v7().simple()));
+    dir.to_string_lossy().into_owned()
+}
+
 pub async fn to_json(resp: Response) -> Json {
     let status = resp.status();
     let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
@@ -107,6 +113,7 @@ impl Harness {
             db_pool_max: 4,
             verify_private: false,
             cors_origins: Vec::new(),
+            upload_dir: tmp_upload_dir(),
         };
         tweak(&mut cfg);
 
@@ -252,6 +259,53 @@ impl Harness {
             .raw("PATCH", uri, &[("authorization", &auth)], Some(body))
             .await;
         to_json(resp).await
+    }
+
+    /// multipart 上传一张图；`bytes` 由调用方给（可以是假魔数）。
+    pub async fn post_multipart(&self, uri: &str, key: &str, bytes: &[u8]) -> Response {
+        const BOUNDARY: &str = "XBOUNDARY";
+        let mut body = Vec::new();
+        body.extend_from_slice(
+            format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\n\
+                 Content-Type: image/png\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
+
+        let ip = self.ip.take();
+        self.ip.set(ip.clone());
+        let request = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header(
+                header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={BOUNDARY}"),
+            )
+            .header("x-forwarded-for", ip)
+            .header("x-site-key", key)
+            .body(Body::from(body))
+            .expect("valid request");
+        self.app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("send failed")
+    }
+
+    /// 取一张图（`to_json` 只有 1 MiB，这里直出响应）。
+    pub async fn media(&self, file: &str) -> Response {
+        let request = Request::builder()
+            .uri(format!("/media/{file}"))
+            .body(Body::empty())
+            .expect("valid request");
+        self.app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("send failed")
     }
 
     /// 原生表单提交（`application/x-www-form-urlencoded`），用来验无 JS 路径。

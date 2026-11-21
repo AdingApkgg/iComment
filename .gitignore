@@ -21,6 +21,8 @@ dist/
 *.db-shm
 *.db-wal
 /data/
+# 本地附图
+var/uploads/
 
 # 编辑器 / 系统
 .DS_Store

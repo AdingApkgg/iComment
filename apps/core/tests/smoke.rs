@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use icomment_core::antispam;
 use serde_json::json;
 
-use crate::common::{Harness, V1};
+use crate::common::{Harness, V1, to_json};
 
 #[tokio::test]
 async fn device_flow_issues_working_token() {
@@ -944,6 +944,143 @@ async fn anonymous_react_gets_a_signed_voter_cookie() {
     let cookie = body["_cookie"].as_str().expect("cookie");
     assert!(cookie.starts_with("ic_voter="));
     assert!(!cookie.contains("HttpOnly"));
+
+    h.finish().await;
+}
+
+const PNG: [u8; 33] = {
+    let mut b = [0u8; 33];
+    b[0] = 0x89;
+    b[1] = b'P';
+    b[2] = b'N';
+    b[3] = b'G';
+    b[4] = 0x0d;
+    b[5] = 0x0a;
+    b[6] = 0x1a;
+    b[7] = 0x0a;
+    b[11] = 13;
+    b[12] = b'I';
+    b[13] = b'H';
+    b[14] = b'D';
+    b[15] = b'R';
+    b[16] = 0;
+    b[17] = 0;
+    b[18] = 2;
+    b[19] = 128; // 640
+    b[20] = 0;
+    b[21] = 0;
+    b[22] = 1;
+    b[23] = 224; // 480
+    b
+};
+
+async fn upload(h: &Harness, key: &str) -> (StatusCode, serde_json::Value) {
+    to_json(h.post_multipart(&format!("{V1}/uploads"), key, &PNG).await).await
+}
+
+async fn post_with_images(h: &Harness, key: &str, snippet: &str) -> (StatusCode, serde_json::Value) {
+    h.anon(
+        &format!("{V1}/comments"),
+        key,
+        serde_json::json!({
+            "path": "/posts/pics",
+            "body_md": format!("看图 {snippet}"),
+        }),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn upload_then_comment_binds_the_image() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+    let token = h.login("pic@example.com").await;
+    let (key, _) = h.create_site(&token, "pic.example.com").await;
+
+    let (status, up) = upload(&h, &key).await;
+    assert_eq!(status, StatusCode::OK, "{up}");
+    assert_eq!(up["width"], 640);
+    assert_eq!(up["height"], 480);
+    let markdown = up["markdown"].as_str().expect("markdown");
+    assert!(markdown.contains("ic-attachment:"));
+
+    let (status, posted) = post_with_images(&h, &key, markdown).await;
+    assert_eq!(status, StatusCode::OK, "{posted}");
+    let html = posted["body_html"].as_str().expect("body_html");
+    assert!(html.contains("<img"), "{html}");
+    assert!(!html.contains("ic-attachment:"), "{html}");
+    let path = up["url"]
+        .as_str()
+        .expect("url")
+        .rsplit_once("/media/")
+        .expect("absolute url")
+        .1
+        .to_owned();
+    assert!(html.contains(&path), "{html}");
+    assert_eq!(posted["attachments"].as_array().expect("list").len(), 1);
+
+    let resp = h.media(&path).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("content-type").expect("type"),
+        "image/png"
+    );
+    let etag = resp
+        .headers()
+        .get("etag")
+        .expect("etag")
+        .to_str()
+        .expect("ascii")
+        .to_owned();
+    let cached = h
+        .raw("GET", &format!("/media/{path}"), &[("if-none-match", etag.as_str())], None)
+        .await;
+    assert_eq!(cached.status(), StatusCode::NOT_MODIFIED);
+    assert!(h.media("nope.png").await.status() == StatusCode::NOT_FOUND);
+
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn attachment_rules_are_enforced() {
+    let Some(mut h) = Harness::start().await else {
+        return;
+    };
+    h.unique_ip();
+    let token = h.login("rule@example.com").await;
+    let (key, _) = h.create_site(&token, "rule.example.com").await;
+    let (other, _) = h.create_site(&token, "other.example.com").await;
+
+    let (status, bad) = to_json(h.post_multipart(&format!("{V1}/uploads"), &key, b"<svg/>").await).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
+
+    // 别的站的附件不能拿来贴
+    let (_, foreign) = upload(&h, &other).await;
+    let markdown = foreign["markdown"].as_str().expect("markdown").to_owned();
+    let (status, posted) = post_with_images(&h, &key, &markdown).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{posted}");
+
+    // 一张图只能绑一次
+    let (_, up) = upload(&h, &key).await;
+    let markdown = up["markdown"].as_str().expect("markdown").to_owned();
+    assert_eq!(post_with_images(&h, &key, &markdown).await.0, StatusCode::OK);
+    h.unique_ip();
+    assert_eq!(
+        post_with_images(&h, &key, &markdown).await.0,
+        StatusCode::BAD_REQUEST
+    );
+
+    // 第五张只保留前四张
+    let mut snippets = Vec::new();
+    for _ in 0..5 {
+        let (_, up) = upload(&h, &key).await;
+        snippets.push(up["markdown"].as_str().expect("markdown").to_owned());
+    }
+    let (status, posted) = post_with_images(&h, &key, &snippets.join("\n")).await;
+    assert_eq!(status, StatusCode::OK, "{posted}");
+    assert_eq!(posted["attachments"].as_array().expect("list").len(), 4);
 
     h.finish().await;
 }

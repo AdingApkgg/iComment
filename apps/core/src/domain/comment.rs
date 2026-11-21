@@ -16,6 +16,7 @@ pub const MAX_DEPTH: i32 = 5;
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct Comment {
     pub id: Uuid,
+    pub site_id: Uuid,
     pub thread_id: Uuid,
     pub parent_id: Option<Uuid>,
     pub body_md: String,
@@ -30,7 +31,7 @@ pub struct Comment {
     pub created_at: DateTime<Utc>,
 }
 
-const COLS: &str = "id, thread_id, parent_id, body_md, body_html, author_kind, author_uid, \
+const COLS: &str = "id, site_id, thread_id, parent_id, body_md, body_html, author_kind, author_uid, \
                     author_name, author_avatar, author_email, status, identity_unverified, created_at";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

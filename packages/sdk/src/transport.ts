@@ -37,17 +37,40 @@ export async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<{ data: T; next: NextStep }> {
+  return send<T>(transport, method, path, body, {});
+}
+
+/** 请求体不是 JSON 时用（目前只有 multipart 上传）。 */
+export async function requestRaw<T>(
+  transport: Transport,
+  method: string,
+  path: string,
+  body: FormData,
+  headers: Record<string, string> = {},
+): Promise<{ data: T; next: NextStep }> {
+  return send<T>(transport, method, path, body, headers);
+}
+
+async function send<T>(
+  transport: Transport,
+  method: string,
+  path: string,
+  body: unknown,
+  headers: Record<string, string>,
+): Promise<{ data: T; next: NextStep }> {
   const token = typeof transport.token === "function" ? transport.token() : transport.token;
   const doFetch = transport.fetch ?? globalThis.fetch;
+  const encoded = body instanceof FormData;
 
   const res = await doFetch(`${transport.base}${path}`, {
     method,
     headers: {
       accept: "application/json",
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(body === undefined || encoded ? {} : { "content-type": "application/json" }),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...headers,
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined || encoded ? (body as FormData | undefined) : JSON.stringify(body),
   });
 
   if (res.status === 204) return { data: undefined as T, next: null };

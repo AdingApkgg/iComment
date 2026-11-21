@@ -10,12 +10,12 @@ use uuid::Uuid;
 
 use crate::{
     akismet, antispam,
-    domain::{comment, site, thread},
+    domain::{attachment, comment, site, thread},
     error::{Code, Problem, Result},
     extract::{ClientIp, SiteOrigin},
     identity, markdown, reaction,
     state::AppState,
-    voter,
+    upload, voter,
 };
 
 #[derive(Debug, Deserialize)]
@@ -94,9 +94,14 @@ pub struct CommentView {
     pub identity_unverified: bool,
     pub created_at: DateTime<Utc>,
     pub reactions: reaction::Tally,
+    pub attachments: Vec<attachment::Attachment>,
 }
 
-fn view(c: comment::Comment, reactions: reaction::Tally) -> CommentView {
+fn view(
+    c: comment::Comment,
+    reactions: reaction::Tally,
+    attachments: Vec<attachment::Attachment>,
+) -> CommentView {
     CommentView {
         id: c.id,
         parent_id: c.parent_id,
@@ -108,6 +113,7 @@ fn view(c: comment::Comment, reactions: reaction::Tally) -> CommentView {
         identity_unverified: c.identity_unverified,
         created_at: c.created_at,
         reactions,
+        attachments,
     }
 }
 
@@ -119,11 +125,18 @@ async fn views(
 ) -> Result<Vec<CommentView>> {
     let ids: Vec<Uuid> = rows.iter().map(|c| c.id).collect();
     let tallies = reaction::batch(state, &ids, voter).await?;
+    // 附图要按站点过滤，翻页时站点 id 从评论上取
+    let site_id = rows.first().map(|c| c.site_id);
+    let mut files = match site_id {
+        Some(site_id) => attachment::batch(state, site_id, &ids).await?,
+        None => std::collections::HashMap::new(),
+    };
     Ok(rows
         .into_iter()
         .map(|c| {
             let tally = tallies.get(&c.id).cloned().unwrap_or_default();
-            view(c, tally)
+            let attachments = files.remove(&c.id).unwrap_or_default();
+            view(c, tally, attachments)
         })
         .collect())
 }
@@ -266,6 +279,8 @@ pub struct Created {
     pub created_at: DateTime<Utc>,
     /// 只有真正新插入才为 true；重放返回 false
     pub created: bool,
+    /// 这次落定的附图（重放为空）
+    pub attachments: Vec<attachment::Attachment>,
 }
 
 #[axum::debug_handler]
@@ -274,8 +289,15 @@ pub async fn create(
     SiteOrigin(origin): SiteOrigin,
     ClientIp(ip): ClientIp,
     headers: HeaderMap,
-    Json(mut input): Json<CreateComment>,
+    request: axum::extract::Request,
 ) -> Result<Json<Created>> {
+    // 自己收 body：正文上限和上传共用一条，JSON 提取器的 2 MiB 不够
+    let raw = axum::body::to_bytes(request.into_body(), crate::router::BODY_LIMIT)
+        .await
+        .map_err(|_| Problem::code(Code::Validation, "body too large or truncated"))?;
+    let mut input: CreateComment = serde_json::from_slice(&raw)
+        .map_err(|e| Problem::code(Code::Validation, format!("bad json: {e}")))?;
+
     // 头优先：调用方重试时换不出新 body，但能原样再发一次同一把钥匙
     if input.idempotency_key.is_none()
         && let Some(key) = headers
@@ -330,7 +352,14 @@ pub async fn submit(
         .unwrap_or(0);
     let soft_capped = daily > antispam::DAILY_SOFT_CAP;
 
-    let body_md = comment::validate_body(&input.body_md)?;
+    // 正文里的 ic-attachment: 占位符 → 真实地址，同时确认图确是本站待绑定的上传
+    let mut body_md = comment::validate_body(&input.body_md)?;
+    let attached = upload::referenced(&body_md);
+    if !attached.is_empty() {
+        attachment::pending_owned(state, site.id, &attached).await?;
+        let rows = attachment::by_ids(state, &attached).await?;
+        body_md = upload::expand(&body_md, &attachment::link_map(&rows, &state.cfg().public_base_url));
+    }
     let (spam, needs_review) = antispam::sniff(
         &body_md,
         input.author_name.as_deref(),
@@ -421,6 +450,7 @@ pub async fn submit(
 
     if created {
         thread::bump(state, thread.id, 1, comment.created_at).await?;
+        attachment::bind(state, site.id, comment.id, &attached).await?;
     }
 
     Ok(Created {
@@ -429,6 +459,11 @@ pub async fn submit(
         body_html: rendered.html,
         created_at: comment.created_at,
         created,
+        attachments: if created {
+            attachment::for_comment(state, comment.id).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        },
     })
 }
 
@@ -466,5 +501,6 @@ pub async fn one(
     }
     let (who, _) = voter::resolve(&headers, &state);
     let tally = reaction::tally(&state, id, Some(&who)).await?;
-    Ok(Json(view(comment, tally)))
+    let files = attachment::batch(&state, site.id, &[id]).await?;
+    Ok(Json(view(comment, tally, files.into_values().next().unwrap_or_default())))
 }

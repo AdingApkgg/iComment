@@ -4,6 +4,8 @@ import { repeat } from "lit/directives/repeat.js";
 import { Api, ApiError, type Comment, type ReactionKind, type SiteMeta } from "./api.js";
 
 const PAGE_SIZE_HINT = 40;
+/** 与核心的 `MAX_PER_COMMENT` 对齐。 */
+const MAX_IMAGES = 4;
 
 /** 固定顺序，别跟服务端 enum 顺序脱节。 */
 const REACTIONS: ReadonlyArray<readonly [ReactionKind, string, string]> = [
@@ -32,6 +34,8 @@ type View = {
   notice: string | null;
   /** 正在提交反应，防连点 */
   reacting: string | null;
+  /** 正在上传的图数 */
+  uploading: number;
 };
 
 const blank = (): View => ({
@@ -48,6 +52,7 @@ const blank = (): View => ({
   sending: false,
   notice: null,
   reacting: null,
+  uploading: 0,
 });
 
 /** 与核心的 CommentView 对齐；深度由客户端按 parent 链算，免得信服务端。 */
@@ -408,6 +413,8 @@ export class CommentWidget extends LitElement {
     event.preventDefault();
     if (!this.api || this._view.sending) return;
 
+    if (!this.api || this._view.sending) return;
+
     const body = this._view.body.trim();
     if (!body) {
       this._view = { ...this._view, error: "内容不能为空" };
@@ -503,9 +510,55 @@ export class CommentWidget extends LitElement {
     return html`<div class="reacts">${shown.map(button)}${picker}</div>`;
   }
 
+  /** 选图或粘贴时上传；完成前禁用发送，避免引用还没登记的附件。 */
   private reply(target: Comment): void {
     this._view = { ...this._view, replyTo: target, error: null };
     this.renderRoot.querySelector("textarea")?.focus();
+  }
+
+  /** 正文里已经引用的附图数。 */
+  private images(): number {
+    return this._view.body.split("ic-attachment:").length - 1;
+  }
+
+  /** 打开系统选图框；`input.hidden` 不占布局，选完即清空以允许重选同一张。 */
+  private pick(): void {
+    const input = this.renderRoot.querySelector<HTMLInputElement>("input[type=file]");
+    if (!input) return;
+    input.value = "";
+    input.click();
+  }
+
+  /** 选图或粘贴时上传；完成前发送按钮保持可用但要等上传结束。 */
+  private async attach(files: FileList | File[] | null): Promise<void> {
+    if (!this.api || !files || files.length === 0) return;
+    if (this._view.body.includes("ic-attachment:") && this.images() >= MAX_IMAGES) {
+      this._view = { ...this._view, error: `最多 ${MAX_IMAGES} 张图` };
+      return;
+    }
+    const room = Math.max(0, MAX_IMAGES - this.images());
+    const picked = [...files].filter((f) => f.type.startsWith("image/")).slice(0, room);
+    if (picked.length === 0) {
+      this._view = { ...this._view, error: "只支持图片" };
+      return;
+    }
+    this._view = { ...this._view, uploading: this._view.uploading + picked.length, error: null };
+    for (const file of picked) {
+      try {
+        const stored = await this.api.upload(file);
+        this._view = {
+          ...this._view,
+          uploading: this._view.uploading - 1,
+          body: `${this._view.body.replace(/\s*$/, "")}${this._view.body.trim() ? "\n\n" : ""}${stored.markdown}`,
+        };
+      } catch (err) {
+        this._view = {
+          ...this._view,
+          uploading: this._view.uploading - 1,
+          error: err instanceof ApiError && err.status === 429 ? "图传得太快，稍等" : describe(err),
+        };
+      }
+    }
   }
 
   private renderComment(
@@ -628,12 +681,31 @@ export class CommentWidget extends LitElement {
             .value=${live(v.body)}
             @input=${(e: InputEvent) =>
               (this._view = { ...this._view, body: (e.target as HTMLTextAreaElement).value })}
+            @paste=${(e: ClipboardEvent) => {
+              const files = e.clipboardData?.files;
+              if (files?.length) void this.attach(files);
+            }}
           ></textarea>
           </label>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            hidden
+            @change=${(e: Event) => void this.attach((e.target as HTMLInputElement).files)}
+          />
           ${meta?.challenge_mode === "always" ? html`<div class="turnstile"></div>` : nothing}
           <div class="row">
             <span class="muted">${v.body.length} 字</span>
-            <button ?disabled=${v.sending || v.loading} type="submit">
+            <button
+              type="button"
+              class="link"
+              ?disabled=${v.uploading > 0 || v.sending}
+              @click=${() => this.pick()}
+            >
+              ${v.uploading > 0 ? `上传中（${v.uploading}）…` : "插图"}
+            </button>
+            <button ?disabled=${v.sending || v.loading || v.uploading > 0} type="submit">
               ${v.sending ? "发送中…" : "发表"}
             </button>
           </div>

@@ -16,6 +16,7 @@ use crate::{
 
 pub const COMMENT_BURST: i64 = 3; // 每 60s
 pub const COMMENT_HOURLY: i64 = 24; // 每 3600s
+pub const UPLOAD_HOURLY: i64 = 40; // 每 3600s，附图比评论宽松一点
 pub const REACTION_BURST: i64 = 30; // 每 60s，比发评论宽松得多
 
 /// 反应投票的限流键：站点 + IP。

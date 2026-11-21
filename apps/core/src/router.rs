@@ -14,7 +14,10 @@ use tower_http::{
     limit::RequestBodyLimitLayer, timeout::TimeoutLayer, trace::TraceLayer,
 };
 
-use crate::{api, domain::comment::MAX_BODY_BYTES, state::AppState};
+use crate::{api, domain::comment::MAX_BODY_BYTES, state::AppState, upload};
+
+/// 全局体积上限按附图算；上传失败时由 handler 自己再收窄到 4 MiB。
+pub const BODY_LIMIT: usize = upload::MAX_FILE_BYTES + 64 * 1024;
 
 pub fn build(state: AppState) -> Router {
     let public = Router::new()
@@ -25,6 +28,7 @@ pub fn build(state: AppState) -> Router {
             get(api::public::list).post(api::public::create),
         )
         .route("/comments/{id}", get(api::public::one))
+        .route("/uploads", post(api::upload::create))
         .route(
             "/comments/{id}/reactions/{kind}",
             post(api::public::react).delete(api::public::unreact),
@@ -66,6 +70,7 @@ pub fn build(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/widget/v1/icomment.js", get(widget_js))
         .route("/static/app.css", get(app_css))
+        .route("/media/{file}", get(api::upload::media))
         .nest("/api/v1", public.merge(anon))
         .nest("/api/v1/agent", agent)
         .fallback(not_found)
@@ -77,7 +82,7 @@ pub fn build(state: AppState) -> Router {
         .layer(CompressionLayer::new())
         .layer(CatchPanicLayer::new())
         .layer(TraceLayer::new_for_http())
-        .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES + 8 * 1024))
+        .layer(RequestBodyLimitLayer::new(BODY_LIMIT.max(MAX_BODY_BYTES + 8 * 1024)))
         .layer(
             CorsLayer::new()
                 .allow_origin(tower_http::cors::Any)

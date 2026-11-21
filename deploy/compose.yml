@@ -21,11 +21,15 @@ services:
       IC_TURNSTILE_SECRET: ${IC_TURNSTILE_SECRET:-}
       IC_TURNSTILE_SITE_KEY: ${IC_TURNSTILE_SITE_KEY:-}
       IC_SESSION_SECRET: ${IC_SESSION_SECRET}
+      IC_UPLOAD_DIR: /data/uploads
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      # 附图；distroless 的 WORKDIR 是 /data，只有这里可写
+      - uploads:/data/uploads
     expose:
       - "8080"
     healthcheck:
@@ -85,3 +89,4 @@ volumes:
   redisdata:
   caddydata:
   caddyconf:
+  uploads:

@@ -21,6 +21,7 @@ pub mod ratelimit;
 pub mod reaction;
 pub mod router;
 pub mod state;
+pub mod upload;
 pub mod voter;
 pub mod web;
 

@@ -44,6 +44,14 @@ export type Created = {
   message: string | null;
 };
 
+export type Stored = {
+  id: string;
+  url: string;
+  markdown: string;
+  width: number;
+  height: number;
+};
+
 export class ApiError extends Error {
   constructor(
     readonly code: string,
@@ -107,5 +115,26 @@ export class Api {
     return this.call<ReactionTally>(`/comments/${id}/reactions/${kind}`, {
       method: on ? "POST" : "DELETE",
     });
+  }
+
+  /** 上传一张图，回可以插进正文的 Markdown 片段。 */
+  async upload(file: Blob): Promise<Stored> {
+    const form = new FormData();
+    form.append("file", file, file instanceof File ? file.name : "paste.png");
+    const res = await fetch(`${this.base}/uploads`, {
+      method: "POST",
+      headers: { "x-site-key": this.siteKey },
+      body: form,
+      credentials: "omit",
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new ApiError(
+        (body as { code?: string } | null)?.code ?? "unknown_error",
+        (body as { message?: string } | null)?.message ?? res.statusText,
+        res.status,
+      );
+    }
+    return body as Stored;
   }
 }
