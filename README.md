@@ -80,7 +80,7 @@ Akismet 兜底也可选：只填 `IC_AKISMET_KEY` 就生效，只对本地规则
 | 审核留痕           | `/dashboard/sites/{id}/audit`           | 每次放行/隐藏/删除都记一条，可按评论回看         |
 | 域名黑名单         | 站点设置面板 / `update_site`            | 命中即进垃圾箱，子域一并拦；关键词与链接数仍兜底 |
 | Akismet            | `IC_AKISMET_KEY`（可选）                | 本地放行后再问一次；超时或报错按本地结论走       |
-| 附图               | `POST /api/v1/uploads`、`/media/{hash}` | 上传回占位符；内容寻址，`/media` 长缓存不可变  |
+| 附图               | `POST /api/v1/uploads`、`/media/{hash}` | 上传回占位符；内容寻址，`/media` 长缓存不可变    |
 
 错误统一 `application/problem+json`，带 `code`、`fields`，必要时 `next` 指引下一步；限流回 `Retry-After`。
 

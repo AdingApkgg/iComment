@@ -1122,7 +1122,13 @@ async fn identical_bytes_are_stored_once() {
         .execute(&h.admin)
         .await
         .expect("unlink");
-    let hash = first["path"].as_str().expect("path").to_owned();
+    let hash = first["url"]
+        .as_str()
+        .expect("url")
+        .rsplit('/')
+        .next()
+        .expect("hash")
+        .to_owned();
     assert!(icomment_core::blob::get(&h.state, &hash).await.is_some());
     assert_eq!(
         icomment_core::blob::sweep_orphans(&h.state)
