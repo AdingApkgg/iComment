@@ -62,8 +62,7 @@ pub async fn sniff_reader<R: tokio::io::AsyncRead + Unpin>(reader: &mut R) -> Re
         .read(&mut head)
         .await
         .map_err(|e| Problem::code(Code::Validation, format!("unreadable upload: {e}")))?;
-    sniff(&head[..n])
-        .ok_or_else(|| Problem::code(Code::Validation, "only PNG, JPEG, WebP or GIF"))
+    sniff(&head[..n]).ok_or_else(|| Problem::code(Code::Validation, "only PNG, JPEG, WebP or GIF"))
 }
 
 /// 读尺寸；认不出结构就返回 None（不阻塞上传，只是没有宽高）。
@@ -104,8 +103,20 @@ fn webp_dimensions(bytes: &[u8]) -> Option<(i32, i32)> {
             ))
         }
         b"VP8X" => Some((
-            u32::from_le_bytes([bytes.get(24).copied()?, bytes.get(25).copied()?, bytes.get(26).copied()?, bytes.get(27).copied()?]) as i32 + 1,
-            u32::from_le_bytes([bytes.get(28).copied()?, bytes.get(29).copied()?, bytes.get(30).copied()?, bytes.get(31).copied()?]) as i32 + 1,
+            u32::from_le_bytes([
+                bytes.get(24).copied()?,
+                bytes.get(25).copied()?,
+                bytes.get(26).copied()?,
+                bytes.get(27).copied()?,
+            ]) as i32
+                + 1,
+            u32::from_le_bytes([
+                bytes.get(28).copied()?,
+                bytes.get(29).copied()?,
+                bytes.get(30).copied()?,
+                bytes.get(31).copied()?,
+            ]) as i32
+                + 1,
         )),
         _ => None,
     }
@@ -125,7 +136,9 @@ fn jpeg_dimensions(bytes: &[u8]) -> Option<(i32, i32)> {
             let w = u16::from_be_bytes(bytes.get(i + 7..i + 9)?.try_into().ok()?);
             return Some((i32::from(w), i32::from(h)));
         }
-        let len = usize::from(u16::from_be_bytes(bytes.get(i + 2..i + 4)?.try_into().ok()?));
+        let len = usize::from(u16::from_be_bytes(
+            bytes.get(i + 2..i + 4)?.try_into().ok()?,
+        ));
         i += 2 + len.max(2);
     }
     None
@@ -226,7 +239,10 @@ mod tests {
 
     #[test]
     fn sniffs_by_magic_only() {
-        assert_eq!(sniff(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]), Some(Kind::Png));
+        assert_eq!(
+            sniff(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
+            Some(Kind::Png)
+        );
         assert_eq!(sniff(&[0xff, 0xd8, 0xff, 0xe0]), Some(Kind::Jpeg));
         assert_eq!(sniff(b"GIF89a...."), Some(Kind::Gif));
         assert_eq!(sniff(b"RIFF\0\0\0\0WEBPVP8 "), Some(Kind::WebP));
@@ -248,7 +264,10 @@ mod tests {
         let mut links = std::collections::HashMap::new();
         let id = Uuid::now_v7();
         links.insert(id, format!("/media/{id}.png"));
-        let body = format!("a ![](ic-attachment:{id}) b ![](ic-attachment:{})", Uuid::nil());
+        let body = format!(
+            "a ![](ic-attachment:{id}) b ![](ic-attachment:{})",
+            Uuid::nil()
+        );
         let out = expand(&body, &links);
         assert!(out.contains(&format!("/media/{id}.png")));
         assert!(out.contains("ic-attachment:00000000-0000-0000-0000-000000000000"));

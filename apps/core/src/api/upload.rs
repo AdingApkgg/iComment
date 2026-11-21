@@ -70,16 +70,7 @@ pub async fn create(
         .ok_or_else(|| Problem::code(Code::Validation, "only PNG, JPEG, WebP or GIF"))?;
     let (width, height) = upload::dimensions(kind, &buf).unwrap_or((0, 0));
     let (id, path) = upload::store(&state, kind, &buf).await?;
-    attachment::record(
-        &state,
-        site.id,
-        id,
-        &path,
-        buf.len() as i32,
-        width,
-        height,
-    )
-    .await?;
+    attachment::record(&state, site.id, id, &path, buf.len() as i32, width, height).await?;
 
     let url = attachment::link(&state.cfg().public_base_url, &path);
     Ok(Json(Stored {

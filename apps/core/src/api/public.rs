@@ -358,7 +358,10 @@ pub async fn submit(
     if !attached.is_empty() {
         attachment::pending_owned(state, site.id, &attached).await?;
         let rows = attachment::by_ids(state, &attached).await?;
-        body_md = upload::expand(&body_md, &attachment::link_map(&rows, &state.cfg().public_base_url));
+        body_md = upload::expand(
+            &body_md,
+            &attachment::link_map(&rows, &state.cfg().public_base_url),
+        );
     }
     let (spam, needs_review) = antispam::sniff(
         &body_md,
@@ -460,7 +463,9 @@ pub async fn submit(
         created_at: comment.created_at,
         created,
         attachments: if created {
-            attachment::for_comment(state, comment.id).await.unwrap_or_default()
+            attachment::for_comment(state, comment.id)
+                .await
+                .unwrap_or_default()
         } else {
             Vec::new()
         },
@@ -502,5 +507,9 @@ pub async fn one(
     let (who, _) = voter::resolve(&headers, &state);
     let tally = reaction::tally(&state, id, Some(&who)).await?;
     let files = attachment::batch(&state, site.id, &[id]).await?;
-    Ok(Json(view(comment, tally, files.into_values().next().unwrap_or_default())))
+    Ok(Json(view(
+        comment,
+        tally,
+        files.into_values().next().unwrap_or_default(),
+    )))
 }

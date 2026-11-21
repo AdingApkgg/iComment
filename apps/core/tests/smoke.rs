@@ -978,7 +978,11 @@ async fn upload(h: &Harness, key: &str) -> (StatusCode, serde_json::Value) {
     to_json(h.post_multipart(&format!("{V1}/uploads"), key, &PNG).await).await
 }
 
-async fn post_with_images(h: &Harness, key: &str, snippet: &str) -> (StatusCode, serde_json::Value) {
+async fn post_with_images(
+    h: &Harness,
+    key: &str,
+    snippet: &str,
+) -> (StatusCode, serde_json::Value) {
     h.anon(
         &format!("{V1}/comments"),
         key,
@@ -1035,7 +1039,12 @@ async fn upload_then_comment_binds_the_image() {
         .expect("ascii")
         .to_owned();
     let cached = h
-        .raw("GET", &format!("/media/{path}"), &[("if-none-match", etag.as_str())], None)
+        .raw(
+            "GET",
+            &format!("/media/{path}"),
+            &[("if-none-match", etag.as_str())],
+            None,
+        )
         .await;
     assert_eq!(cached.status(), StatusCode::NOT_MODIFIED);
     assert!(h.media("nope.png").await.status() == StatusCode::NOT_FOUND);
@@ -1053,7 +1062,11 @@ async fn attachment_rules_are_enforced() {
     let (key, _) = h.create_site(&token, "rule.example.com").await;
     let (other, _) = h.create_site(&token, "other.example.com").await;
 
-    let (status, bad) = to_json(h.post_multipart(&format!("{V1}/uploads"), &key, b"<svg/>").await).await;
+    let (status, bad) = to_json(
+        h.post_multipart(&format!("{V1}/uploads"), &key, b"<svg/>")
+            .await,
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
 
     // 别的站的附件不能拿来贴
@@ -1065,7 +1078,10 @@ async fn attachment_rules_are_enforced() {
     // 一张图只能绑一次
     let (_, up) = upload(&h, &key).await;
     let markdown = up["markdown"].as_str().expect("markdown").to_owned();
-    assert_eq!(post_with_images(&h, &key, &markdown).await.0, StatusCode::OK);
+    assert_eq!(
+        post_with_images(&h, &key, &markdown).await.0,
+        StatusCode::OK
+    );
     h.unique_ip();
     assert_eq!(
         post_with_images(&h, &key, &markdown).await.0,

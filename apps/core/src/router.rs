@@ -82,7 +82,9 @@ pub fn build(state: AppState) -> Router {
         .layer(CompressionLayer::new())
         .layer(CatchPanicLayer::new())
         .layer(TraceLayer::new_for_http())
-        .layer(RequestBodyLimitLayer::new(BODY_LIMIT.max(MAX_BODY_BYTES + 8 * 1024)))
+        .layer(RequestBodyLimitLayer::new(
+            BODY_LIMIT.max(MAX_BODY_BYTES + 8 * 1024),
+        ))
         .layer(
             CorsLayer::new()
                 .allow_origin(tower_http::cors::Any)

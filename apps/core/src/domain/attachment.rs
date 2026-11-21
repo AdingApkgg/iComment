@@ -46,12 +46,7 @@ pub async fn record(
 }
 
 /// 把附件绑到评论上，按 `body_md` 里的出现顺序定位置。
-pub async fn bind(
-    state: &AppState,
-    site_id: Uuid,
-    comment_id: Uuid,
-    ids: &[Uuid],
-) -> Result<()> {
+pub async fn bind(state: &AppState, site_id: Uuid, comment_id: Uuid, ids: &[Uuid]) -> Result<()> {
     if ids.is_empty() {
         return Ok(());
     }
@@ -79,7 +74,8 @@ pub async fn batch(
     site_id: Uuid,
     comment_ids: &[Uuid],
 ) -> Result<std::collections::HashMap<Uuid, Vec<Attachment>>> {
-    let mut out: std::collections::HashMap<Uuid, Vec<Attachment>> = std::collections::HashMap::new();
+    let mut out: std::collections::HashMap<Uuid, Vec<Attachment>> =
+        std::collections::HashMap::new();
     if comment_ids.is_empty() {
         return Ok(out);
     }
@@ -137,7 +133,8 @@ pub async fn sweep(state: &AppState) -> Result<u64> {
     .fetch_all(state.db())
     .await?;
     for path in &rows {
-        let _ = tokio::fs::remove_file(std::path::Path::new(&state.cfg().upload_dir).join(path)).await;
+        let _ =
+            tokio::fs::remove_file(std::path::Path::new(&state.cfg().upload_dir).join(path)).await;
     }
     Ok(rows.len() as u64)
 }
@@ -209,7 +206,9 @@ mod tests {
             height: 1,
         };
         assert_eq!(
-            link_map(&[a], "https://c.example/").get(&Uuid::nil()).unwrap(),
+            link_map(&[a], "https://c.example/")
+                .get(&Uuid::nil())
+                .unwrap(),
             "https://c.example/media/x.png"
         );
     }
