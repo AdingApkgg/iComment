@@ -28,6 +28,11 @@ docker run -d --name ic-db -p 25493:5432 -e POSTGRES_USER=icomment \
   -e POSTGRES_PASSWORD=icomment -e POSTGRES_DB=icomment postgres:18-alpine
 docker run -d --name ic-redis -p 26493:6379 redis:8-alpine
 
+# 附图要 SeaweedFS（CAS 存储）：可只起 master/volume/filer，把地址指向它；
+# 不跑就留空 IC_SEAWEED_FILER_URL，附图只落本地目录或内存
+docker compose -f deploy/compose.dev.yml up -d
+export IC_SEAWEED_FILER_URL=http://127.0.0.1:18888/uploads
+
 export IC_DATABASE_URL=postgres://icomment:icomment@127.0.0.1:25493/icomment
 export IC_REDIS_URL=redis://127.0.0.1:26493
 
