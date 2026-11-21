@@ -21,22 +21,43 @@ cp deploy/.env.example deploy/.env
 # 2 起栈：叠 compose.tunnel.yml，Caddy 只听 127.0.0.1:18080，不抢 80/443
 docker compose -f deploy/compose.yml -f deploy/compose.tunnel.yml \
   --env-file deploy/.env up -d --build
+#   网差、容器里 cargo 拉不动 crates.io 时，改用宿主预编的镜像（见下一节）：
+#   ./scripts/build-image.sh
+#   docker compose -f deploy/compose.yml -f deploy/compose.tunnel.yml \
+#     -f deploy/compose.prebuilt.yml --env-file deploy/.env up -d
 
 # 3 隧道入口（本机常驻隧道 alice，见下）
 cf tunnels config get 65ad5231-3e8f-4263-900e-dad5b9463dec > /tmp/tunnel.before.json
 # 在 http_status:404 那条之前插一条：
 #   {"hostname":"icomment.saop.cc","service":"http://127.0.0.1:18080"}
-cf tunnels config update 65ad5231-3e8f-4263-900e-dad5b9463dec --body @/tmp/tunnel.after.json
+# 注意：CLI 的 update 会把整份 config 重写，还会往每条规则里塞 originRequest 默认值；
+# 只想加一条时直接打 API 更稳（--tunnel-config-ingress @ingress.json 也行）：
+TOKEN=$(jq -r .oauth_token ~/.config/cloudflare/config/default.json)
+curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/cfd_tunnel/65ad5231-3e8f-4263-900e-dad5b9463dec/configurations" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  --data '{"config":{"ingress":[...]}}'
 
 # 4 DNS：CNAME 到隧道，proxied
-cf dns records create --zone saop.cc --body '{
-  "type":"CNAME","name":"icomment.saop.cc",
+cf dns records create -z saop.cc --body '{
+  "type":"CNAME","name":"icomment",
   "content":"65ad5231-3e8f-4263-900e-dad5b9463dec.cfargotunnel.com",
   "proxied":true,"ttl":1}'
 
 # 5 验
 sleep 12 && curl -sS -o /dev/null -w '%{http_code}\n' https://icomment.saop.cc/
 ```
+
+## 用宿主预编的二进制（慢网备选）
+
+`scripts/build-image.sh` 在宿主 `cargo build --release` 一次，再把二进制和宿主根证书塞进
+`deploy/Dockerfile.prebuilt` 打成本地镜像 `icomment-core:prebuilt`（约 60 MB），`up` 时
+不再进容器编译。两个坑：
+
+- **glibc 必须同代**：宿主是 Debian forky/sid（glibc 2.41），宿主编出来的二进制要
+  `GLIBC_2.38`，distroless `cc-debian12` 只有 2.36，启动就报
+  `version 'GLIBC_2.38' not found` 然后秒退。所以 prebuilt 的底是 `debian:trixie-slim`。
+  换构建机或换底座时先确认这条。
+- 容器内自建（`deploy/Dockerfile`）在 bookworm 里编译，仍然用 distroless，两条路互不影响。
 
 ## 为什么不用 Caddy 的自动 HTTPS
 

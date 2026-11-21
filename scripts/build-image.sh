@@ -14,5 +14,6 @@ cargo build --release -p icomment-core
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 cp target/release/icomment-core "$stage/"
+cp /etc/ssl/certs/ca-certificates.crt "$stage/"
 docker build -f deploy/Dockerfile.prebuilt -t "$tag" "$stage"
 echo "built $tag"

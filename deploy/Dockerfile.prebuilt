@@ -1,9 +1,20 @@
-# 运行时镜像（不编译）：直接收宿主编好的二进制，省掉容器里的 cargo 下载与编译。
-# 构建上下文是只放了二进制的临时目录，由 scripts/build-image.sh 准备。
-FROM gcr.io/distroless/cc-debian12:nonroot
+# 运行时镜像（不编译）：收宿主编好的二进制，省掉容器里的 cargo 下载与编译。
+# 构建上下文是 scripts/build-image.sh 准备的临时目录（二进制 + CA 证书）。
+#
+# 为什么不用 distroless：本机是 Debian forky/sid（glibc 2.41），宿主编出来的二进制
+# 要求 GLIBC_2.38，distroless cc-debian12 只有 2.36，跑起来直接报
+# `version GLIBC_2.38 not found`。trixie-slim 的 glibc 与构建机同代，二进制能直接跑。
+# 容器内自建（deploy/Dockerfile）仍在 bookworm 里编译，继续用 distroless。
+FROM debian:trixie-slim
+
+# 宿主的根证书直接带进来，镜像里不用再 apt（慢网下 apt 容易卡）
+COPY ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY icomment-core /usr/local/bin/icomment-core
+
+RUN mkdir -p /data && chown 65534:65534 /data
 
 WORKDIR /data
 ENV IC_PROFILE=prod IC_BIND=0.0.0.0:8080
 EXPOSE 8080
+USER 65534:65534
 ENTRYPOINT ["/usr/local/bin/icomment-core"]
