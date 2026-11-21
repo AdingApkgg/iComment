@@ -573,6 +573,16 @@ async fn every_moderation_step_leaves_a_trace() {
     let token = h.login("trace@example.com").await;
     let (key, site) = h.create_site(&token, "trace.example.com").await;
 
+    // 开审核，让新评论落在 pending（visible→visible 不准重复 approve）
+    let (status, _) = h
+        .patch_auth(
+            &format!("{V1}/agent/sites/{site}"),
+            &token,
+            serde_json::json!({ "require_approval": true }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
     let (status, created) = h
         .anon(
             &format!("{V1}/comments"),
@@ -581,6 +591,7 @@ async fn every_moderation_step_leaves_a_trace() {
         )
         .await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(created["status"], "pending", "{created}");
     let id = created["id"].as_str().expect("id");
 
     let (status, _) = h
