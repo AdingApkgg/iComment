@@ -15,7 +15,7 @@ PG + Redis、托管、device auth、llms.txt + install.md 上线、widget 发 CD
 **S2 用得住（3–4 周）**
 审批台、审计表回看、Akismet、贴图与反应（从 mikiacg 搬）、i18n。
 
-已完成：审批台、审计留痕回看（`/dashboard/sites/{id}/audit` 与 `GET /api/v1/agent/sites/{id}/audit`，`moderation_event` 记录 actor/action/reason，用例 `every_moderation_step_leaves_a_trace`）。另加站点级域名黑名单（`site.blocked_domains`，命中含子域即进垃圾箱，控制在 20 条内）。
+已完成：审批台、审计留痕回看（`/dashboard/sites/{id}/audit` 与 `GET /api/v1/agent/sites/{id}/audit`，`moderation_event` 记录 actor/action/reason，用例 `every_moderation_step_leaves_a_trace`）。另加站点级域名黑名单（`site.blocked_domains`，命中含子域即进垃圾箱，控制在 20 条内），以及 Akismet 兜底（可选开关、3 秒超时、失败按本地结论走）。
 验收：一周内真实站点的 spam 全部落在 pending，零穿透到可见。
 
 **S3 再谈收费**

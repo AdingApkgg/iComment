@@ -21,9 +21,13 @@
 **3. 内容规则**
 
 - 链接数量（>3 转 pending）、最小长度、重复体（同 site+path 的 10 分钟内同文合并）。
-- 站点级域名黑名单（`site.blocked_domains`，最多 20 条，命中含子域即判 spam；`a.com` 同时覆盖 `cdn.a.com`）、Akismet 适配器（可选开关，不自建模型）。
+- 站点级域名黑名单（`site.blocked_domains`，最多 20 条，命中含子域即判 spam；`a.com` 同时覆盖 `cdn.a.com`）。
   - 由站点主人在设置面板或 `update_site` 维护，agent 可代填；传 `[]` 清空。
   - 命中是**直接 spam 不发挑战**，所以要先确认对方确实只在链接里出现。
+- Akismet 兜底（可选，不自建模型）：配 `IC_AKISMET_KEY` 才生效，`IC_AKISMET_ENDPOINT` 可指向自建代理。
+  - 只问本地规则已放行、且宿主站没透传**验签通过**身份的评论；命中直接判 spam。
+  - 3 秒超时，连不上或回不认识的内容一律按本地结论走，**绝不因为外部抖动丢评论**。
+  - 外部回的 `true/false` 之外的字符串（如 `Invalid API key`）算"没意见"，同时打一条 warn 日志。
 - 存储前做一次 Honeypot 字段校验。
 
 ## signed identity（HMAC 透传）

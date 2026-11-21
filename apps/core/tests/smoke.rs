@@ -703,3 +703,107 @@ async fn every_moderation_step_leaves_a_trace() {
 
     h.finish().await;
 }
+
+/// 起一个假 Akismet：按请求体里 `comment_content` 是否含 `买粉` 回 true。
+async fn akismet_stub() -> String {
+    use axum::{Router, routing::post};
+
+    async fn check(body: String) -> &'static str {
+        if body.contains("buyfollowers") {
+            "true"
+        } else {
+            "false"
+        }
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind stub");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        let app = Router::new().route("/comment-check", post(check));
+        let _ = axum::serve(listener, app).await;
+    });
+    format!("http://{addr}/comment-check")
+}
+
+#[tokio::test]
+async fn akismet_marks_spam_and_survives_outage() {
+    let endpoint = akismet_stub().await;
+    let Some(mut h) = Harness::start_with(|cfg| {
+        cfg.akismet_key = Some("test-key".to_owned());
+        cfg.akismet_endpoint = endpoint;
+    })
+    .await
+    else {
+        return;
+    };
+    h.unique_ip();
+
+    let token = h.login("akismet@example.com").await;
+    let (key, _site) = h.create_site(&token, "akismet.example.com").await;
+
+    // 本地规则没意见，外部判为垃圾
+    let (status, body) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/a", "body_md": "buyfollowers 便宜出", "author_name": "阿丁" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "spam", "{body}");
+
+    // 外部说不是垃圾，就正常可见
+    let (status, body) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/a", "body_md": "真心好用，推荐一下下", "author_name": "阿丁" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "visible", "{body}");
+
+    h.finish().await;
+}
+
+#[tokio::test]
+async fn akismet_outage_falls_back_to_local_rules() {
+    // 9 号端口一般没人监听：连不上必须照常收下
+    let Some(mut h) = Harness::start_with(|cfg| {
+        cfg.akismet_key = Some("test-key".to_owned());
+        cfg.akismet_endpoint = "http://127.0.0.1:9/comment-check".to_owned();
+    })
+    .await
+    else {
+        return;
+    };
+    h.unique_ip();
+
+    let token = h.login("outage@example.com").await;
+    let (key, _site) = h.create_site(&token, "outage.example.com").await;
+
+    let (status, body) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/a", "body_md": "外部服务挂了也别丢评论", "author_name": "阿丁" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "visible", "{body}");
+
+    // 本地已判垃圾的，外部挂了也还是垃圾
+    let (status, body) = h
+        .anon(
+            &format!("{V1}/comments"),
+            &key,
+            serde_json::json!({ "path": "/a", "body_md": "https://a.example https://b.example https://c.example https://d.example", "author_name": "阿丁" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "spam", "{body}");
+
+    h.finish().await;
+}

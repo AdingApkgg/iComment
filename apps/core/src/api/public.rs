@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    antispam,
+    akismet, antispam,
     domain::{comment, site, thread},
     error::{Code, Problem, Result},
     extract::{ClientIp, SiteOrigin},
@@ -240,6 +240,24 @@ pub async fn submit(
     // 宿主站透传的身份：验过就采信签名里的值（免审核、免挑战），没验过只当展示
     let identity = identity::read(site, headers);
     let verified = matches!(&identity, Some((_, true)));
+
+    // 本地规则已放行、又还没验证过身份时，再问一次 Akismet；失败按本地结论走
+    let ua = headers.get("user-agent").and_then(|v| v.to_str().ok());
+    let spam = if spam || verified {
+        spam
+    } else {
+        akismet::says_spam(
+            state,
+            &site.origin,
+            ip.map(|v| v.to_string()).as_deref(),
+            ua,
+            &body_md,
+            input.author_name.as_deref(),
+            input.author_email.as_deref(),
+        )
+        .await
+        .unwrap_or(false)
+    };
 
     if !skip_challenge && !verified && antispam::challenge_needed(&site.challenge_mode, spam) {
         antispam::verify_challenge(state, input.challenge_token.as_deref(), ip).await?;

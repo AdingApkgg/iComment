@@ -13,6 +13,10 @@ pub struct Config {
     /// 签会话 cookie 的密钥；dev 下按 base url 派生，prod 必须显式给。
     pub session_secret: String,
     pub turnstile_secret: Option<String>,
+    /// Akismet key；配了才会对外发判定请求。
+    pub akismet_key: Option<String>,
+    /// 判定接口，默认官方地址；自建代理或测试时改这里。
+    pub akismet_endpoint: String,
     pub turnstile_site_key: Option<String>,
     pub widget_cdn: String,
     pub db_pool_max: u32,
@@ -81,6 +85,9 @@ impl Config {
             session_secret,
             turnstile_site_key: var("IC_TURNSTILE_SITE_KEY"),
             turnstile_secret: var("IC_TURNSTILE_SECRET"),
+            akismet_key: var("IC_AKISMET_KEY"),
+            akismet_endpoint: var("IC_AKISMET_ENDPOINT")
+                .unwrap_or_else(|| "https://rest.akismet.com/1.1/comment-check".to_owned()),
             widget_cdn,
             db_pool_max,
             verify_private,

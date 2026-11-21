@@ -57,6 +57,11 @@ pub async fn text(resp: Response) -> (StatusCode, String) {
 impl Harness {
     /// 建独立 schema、跑迁移、装 app；缺依赖返回 None，用例据此跳过。
     pub async fn start() -> Option<Self> {
+        Self::start_with(|_| {}).await
+    }
+
+    /// 同上，但允许在建好配置、起 app 之前改几个开关（例如指向本地桩）。
+    pub async fn start_with(tweak: impl FnOnce(&mut config::Config)) -> Option<Self> {
         let base = env("IC_TEST_DATABASE_URL")?;
         let redis_url = env("IC_TEST_REDIS_URL")?;
         let schema = format!("t{}", uuid::Uuid::now_v7().simple());
@@ -86,7 +91,7 @@ impl Harness {
         root.close().await;
         sqlx::migrate!("./migrations").run(&pool).await.ok()?;
 
-        let cfg = config::Config {
+        let mut cfg = config::Config {
             bind: "127.0.0.1:0".to_owned(),
             database_url: scoped,
             redis_url: redis_url.clone(),
@@ -94,11 +99,16 @@ impl Harness {
             session_secret: "test".to_owned(),
             turnstile_secret: None,
             turnstile_site_key: None,
+            // 冒烟默认不连外网；要测 Akismet 的用例自己起桩并设环境变量
+            akismet_key: env("IC_TEST_AKISMET_ENDPOINT").map(|_| "test-key".to_owned()),
+            akismet_endpoint: env("IC_TEST_AKISMET_ENDPOINT")
+                .unwrap_or_else(|| "http://127.0.0.1:9/comment-check".to_owned()),
             widget_cdn: "http://127.0.0.1:8080/widget/v1".to_owned(),
             db_pool_max: 4,
             verify_private: false,
             cors_origins: Vec::new(),
         };
+        tweak(&mut cfg);
 
         let redis = redis::Client::open(redis_url)
             .ok()?
