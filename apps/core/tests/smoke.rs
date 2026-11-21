@@ -624,7 +624,7 @@ async fn every_moderation_step_leaves_a_trace() {
     assert_eq!(events[0]["action"], "visible");
     assert_eq!(events[1]["action"], "hidden");
     assert_eq!(events[1]["reason"], "看不出重点");
-    assert_eq!(events[1]["actor_kind"], "user");
+    assert_eq!(events[1]["actor_kind"], "agent");
 
     // 站点视角能看到指向哪条评论、哪个页面
     let (status, all) = h
