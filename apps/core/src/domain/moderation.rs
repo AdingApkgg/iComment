@@ -15,9 +15,7 @@ pub struct Event {
     pub action: String,
     pub reason: Option<String>,
     pub created_at: DateTime<Utc>,
-    #[serde(skip)]
     pub thread_path: Option<String>,
-    #[serde(skip)]
     pub excerpt: Option<String>,
 }
 
